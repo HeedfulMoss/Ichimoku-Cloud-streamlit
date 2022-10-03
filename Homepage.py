@@ -10,7 +10,7 @@ st.sidebar.subheader('Ticker Selector')
 ticker_list = pd.read_csv('SP500 Index.csv')
 tickerSymbol = st.sidebar.selectbox('Stock ticker', ticker_list)
 tickerData = yf.Ticker(tickerSymbol) 
-tickerDf = tickerData.info()
+tickerDf = tickerData.history(period='3mo')
 # Ticker data
 st.header('**Ticker data**')
 st.write(tickerDf)
