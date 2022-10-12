@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+
 
 def Ichimoku_cloud_func(df):
     high_9 = df['High'].rolling(window= 9).max()
@@ -26,3 +28,14 @@ tickerDf = Ichimoku_cloud_func(tickerDf)
 # Ticker data
 st.header('**Ticker data**')
 st.write(tickerDf)
+
+fig = go.Figure(data=[go.Candlestick(x=tickerDf.index,
+                open=tickerDf['Open'],
+                high=tickerDf['High'],
+                low=tickerDf['Low'],
+                close=tickerDf['Close'])])
+
+# fig.show()
+
+
+st.plotly_chart(fig)
