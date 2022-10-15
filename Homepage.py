@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+# import plotly.express as px
 
 
 def Ichimoku_cloud_func(df):
@@ -34,6 +35,8 @@ fig = go.Figure(data=[go.Candlestick(x=tickerDf.index,
                 high=tickerDf['High'],
                 low=tickerDf['Low'],
                 close=tickerDf['Close'])])
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['tenkan_sen']))
+
 
 # fig.show()
 
