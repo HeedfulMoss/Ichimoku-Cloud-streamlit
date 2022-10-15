@@ -35,7 +35,7 @@ fig = go.Figure(data=[go.Candlestick(x=tickerDf.index,
                 high=tickerDf['High'],
                 low=tickerDf['Low'],
                 close=tickerDf['Close'])])
-fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['tenkan_sen']), mode="lines", color="LightSeaGreen")
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['tenkan_sen']), mode="lines", line=go.scatter.Line(color="gray"))
 
 
 # fig.show()
