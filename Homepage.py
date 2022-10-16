@@ -63,20 +63,21 @@ st.write(type(ticker_options))
 st.header('**Ticker data**')
 st.write(tickerDf)
 
+fig = go.Figure()
 
-fig = go.Figure(data=[go.Candlestick(x=tickerDf.index,
+fig.add_trace(go.Candlestick(x=tickerDf.index,
                 open=tickerDf['Open'],
                 high=tickerDf['High'],
                 low=tickerDf['Low'],
-                close=tickerDf['Close'])])
+                close=tickerDf['Close']))
 
 fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
 
-fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['tenkan_sen'], mode="lines", line=go.scatter.Line(color="blue")))
-fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['kijun_sen'], mode="lines", line=go.scatter.Line(color="orange")))
-fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['chikou_span'], mode="lines", line=go.scatter.Line(color="white")))
-fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['senkou_span_a'], mode="lines", line=go.scatter.Line(color="red")))
-fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['senkou_span_b'], mode="lines", line=go.scatter.Line(color="green")))
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['tenkan_sen'], mode="lines", name='tenkan_sen',line=go.scatter.Line(color="blue")))
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['kijun_sen'], mode="lines", name='kijun_sen', line=go.scatter.Line(color="orange")))
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['chikou_span'], mode="lines", name='chikou_span',line=go.scatter.Line(color="white")))
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['senkou_span_a'], mode="lines", name='senkou_span_a',line=go.scatter.Line(color="red")))
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['senkou_span_b'], mode="lines", name='senkou_span_b',line=go.scatter.Line(color="green")))
 
 # fig.show()
 
