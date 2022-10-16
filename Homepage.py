@@ -42,7 +42,7 @@ tickerData = yf.Ticker(tickerSymbol)
 tickerDf = tickerData.history(period='1y')
 tickerDf = Ichimoku_cloud_func(tickerDf)
 
-st.write(ticker_options)
+st.write(ticker_options[0])
 st.write(type(ticker_options))
 st.header('**Ticker data**')
 st.write(tickerDf)
