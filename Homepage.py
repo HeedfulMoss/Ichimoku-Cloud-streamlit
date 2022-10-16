@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from datetime import timedelta
 # import plotly.express as px
 
 
@@ -16,6 +17,12 @@ def Ichimoku_cloud_func(df):
     df['kijun_sen'] = (high_26 + low_26) /2
 
     df['chikou_span'] = df['Close'].shift(-26)
+
+
+    for i in range(26):
+        line = pd.to_datetime(df.index[-1] + timedelta(minutes=60))
+        new_row = pd.DataFrame(index=[line])
+        df = pd.concat([df, pd.DataFrame(new_row)], ignore_index=False)
 
     # Senkou Span A (Leading Span A): (Conversion Line + Base Line)/2))
     df['senkou_span_a'] = ((df['tenkan_sen'] + df['kijun_sen']) / 2).shift(26)
