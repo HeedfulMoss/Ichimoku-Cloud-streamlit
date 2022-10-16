@@ -70,6 +70,8 @@ fig = go.Figure(data=[go.Candlestick(x=tickerDf.index,
                 low=tickerDf['Low'],
                 close=tickerDf['Close'])])
 
+fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
+
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['tenkan_sen'], mode="lines", line=go.scatter.Line(color="blue")))
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['kijun_sen'], mode="lines", line=go.scatter.Line(color="orange")))
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['chikou_span'], mode="lines", line=go.scatter.Line(color="white")))
