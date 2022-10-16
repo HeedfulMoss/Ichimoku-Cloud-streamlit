@@ -79,7 +79,7 @@ fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['chikou_span'], mode="line
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['senkou_span_a'], mode="lines", name='senkou_span_a',line=go.scatter.Line(color="red")))
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['senkou_span_b'], mode="lines", name='senkou_span_b',line=go.scatter.Line(color="green")))
 
-fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['crossover1'], mode='markers'))
+fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['crossover1'], mode='markers',size='petal_length'))
 
 
 st.plotly_chart(fig)
