@@ -36,7 +36,7 @@ def Ichimoku_cloud_func(df):
 
 def conversion_base_crossover(df):
     df.loc[:, ('crossover1')] = (df.kijun_sen < df.tenkan_sen) & (df.kijun_sen.shift(1) > df.tenkan_sen.shift(1))
-    # df['conversion_base_crossover'] = np.where(df['tenkan_sen'] > df['kijun_sen'], 1, 0)
+    df['conversion_base_crossover'] = np.where(df['tenkan_sen'] > df['kijun_sen'], 1, 0)
     return df
 
 st.set_page_config(page_title='Ichimoku Cloud Homepage')
