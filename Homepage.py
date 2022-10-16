@@ -30,13 +30,20 @@ def Ichimoku_cloud_func(df):
 st.set_page_config(page_title='Ichimoku Cloud Homepage')
 st.header('Please select a ticker')
 
-st.sidebar.subheader('Ticker Selector')
+st.sidebar.subheader('Ichimoku Cloud plot checker')
 ticker_list = pd.read_csv('SP500 Index.csv')
-tickerSymbol = st.sidebar.selectbox('Stock ticker', ticker_list)
+# tickerSymbol = st.sidebar.selectbox('Stock ticker', ticker_list)
+ticker_options = st.multiselect(
+    'What are your favorite colors',
+    ticker_list['Symbol'],
+)
+tickerSymbol = ticker_options[0]
+
 tickerData = yf.Ticker(tickerSymbol) 
 tickerDf = tickerData.history(period='1y')
 tickerDf = Ichimoku_cloud_func(tickerDf)
-# Ticker data
+
+
 st.header('**Ticker data**')
 st.write(tickerDf)
 
@@ -45,6 +52,7 @@ fig = go.Figure(data=[go.Candlestick(x=tickerDf.index,
                 high=tickerDf['High'],
                 low=tickerDf['Low'],
                 close=tickerDf['Close'])])
+
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['tenkan_sen'], mode="lines", line=go.scatter.Line(color="blue")))
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['kijun_sen'], mode="lines", line=go.scatter.Line(color="orange")))
 fig.add_trace(go.Scatter(x=tickerDf.index, y=tickerDf['chikou_span'], mode="lines", line=go.scatter.Line(color="white")))
