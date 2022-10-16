@@ -35,7 +35,8 @@ def Ichimoku_cloud_func(df):
     return df
 
 def conversion_base_crossover(df):
-    df['conversion_base_crossover'] = np.where(df['tenkan_sen'] > df['kijun_sen'], 1, 0)
+    df.loc[:, ('crossover1')] = (df.kijun_sen < df.tenkan_sen) & (df.kijun_sen.shift(1) > df.tenkan_sen.shift(1))
+    # df['conversion_base_crossover'] = np.where(df['tenkan_sen'] > df['kijun_sen'], 1, 0)
     return df
 
 st.set_page_config(page_title='Ichimoku Cloud Homepage')
@@ -55,6 +56,7 @@ tickerSymbol = ticker_options[0]
 tickerData = yf.Ticker(tickerSymbol) 
 tickerDf = tickerData.history(period='1y')
 tickerDf = Ichimoku_cloud_func(tickerDf)
+tickerDf = conversion_base_crossover(tickerDf)
 
 st.write(ticker_options[0])
 st.write(type(ticker_options))
