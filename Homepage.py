@@ -34,6 +34,11 @@ def Ichimoku_cloud_func(df):
 
     return df
 
+def conversion_base_crossover(df):
+    df.loc[:, ('crossover1')] = (df.kijun_sen < df.tenkan_sen) & (df.kijun_sen.shift(1) > df.tenkan_sen.shift(1))
+
+    return df
+
 st.set_page_config(page_title='Ichimoku Cloud Homepage')
 st.header('Please select a ticker')
 
@@ -56,6 +61,7 @@ st.write(ticker_options[0])
 st.write(type(ticker_options))
 st.header('**Ticker data**')
 st.write(tickerDf)
+
 
 fig = go.Figure(data=[go.Candlestick(x=tickerDf.index,
                 open=tickerDf['Open'],
