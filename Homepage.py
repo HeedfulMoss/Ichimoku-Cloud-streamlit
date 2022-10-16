@@ -35,7 +35,7 @@ ticker_list = pd.read_csv('SP500 Index.csv')
 # tickerSymbol = st.sidebar.selectbox('Stock ticker', ticker_list)
 ticker_options = st.multiselect(
     'What are your favorite colors',
-    ticker_list['Symbol'],
+    ticker_list,
 )
 tickerSymbol = ticker_options[0]
 
