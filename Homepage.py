@@ -32,11 +32,14 @@ st.header('Please select a ticker')
 
 st.sidebar.subheader('Ichimoku Cloud plot checker')
 ticker_list = pd.read_csv('SP500 Index.csv')
-tickerSymbol = st.sidebar.selectbox('Stock ticker', ticker_list)
+# tickerSymbol = st.sidebar.selectbox('Stock ticker', ticker_list)
 ticker_options = st.sidebar.multiselect(
     'What are your favorite colors',
     ticker_list,
+    ticker_list[0]
 )
+
+tickerSymbol = ticker_options[0]
 
 tickerData = yf.Ticker(tickerSymbol) 
 tickerDf = tickerData.history(period='1y')
