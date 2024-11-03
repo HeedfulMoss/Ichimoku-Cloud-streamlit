@@ -18,7 +18,6 @@ def Ichimoku_cloud_func(df):
 
     df['chikou_span'] = df['Close'].shift(-26)
 
-
     for i in range(26):
         line = pd.to_datetime(df.index[-1] + timedelta(minutes=60))
         new_row = pd.DataFrame(index=[line])
@@ -48,7 +47,7 @@ ticker_list = pd.read_csv('SP500 Index.csv')
 ticker_options = st.sidebar.multiselect(
     'What are your favorite colors',
     ticker_list,
-    ['AAPL']
+    ['MSFT']
 )
 
 tickerSymbol = ticker_options[0]
@@ -58,8 +57,8 @@ tickerDf = tickerData.history(period='1y')
 tickerDf = Ichimoku_cloud_func(tickerDf)
 tickerDf = conversion_base_crossover(tickerDf)
 
-st.write(ticker_options[0])
-st.write(type(ticker_options))
+#st.write(ticker_options[0])
+#st.write(type(ticker_options))
 st.header('**Ticker data**')
 st.write(tickerDf)
 
