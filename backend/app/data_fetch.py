@@ -18,7 +18,7 @@ def fetch_ticker_data(ticker_name):
         df['time'] = pd.to_datetime(df['time'], errors='coerce')
         df['time'] = df['time'].dt.strftime('%Y-%m-%d')
 
-        print(df.head())
+        #print(df.head())
 
         return df
     except requests.exceptions.JSONDecodeError as e:
