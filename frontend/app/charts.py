@@ -1,6 +1,7 @@
 import json
 from streamlit_lightweight_charts import renderLightweightCharts
 import numpy as np
+#from lightweightcharts import LineSeries, AreaSeries, Indicator
 
 # Define color constants for candlesticks, volume, lines, etc.
 COLOR_BULL = 'rgba(38,166,154,0.9)' # #26a69a

@@ -9,8 +9,6 @@ def fetch_ticker_data(ticker_name):
     # Example: fetch data for 2024 only (adjust as you like)
     df = yf.Ticker(ticker_name).history(start="2024-01-01", end="2024-12-31")[['Open','High','Low','Close','Volume']]
 
-    print(ticker.info)
-
     # Reset index, rename columns, format time as YYYY-MM-DD
     df = df.reset_index()
     df.columns = ['time','open','high','low','close','volume']

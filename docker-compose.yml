@@ -9,7 +9,6 @@ services:
       - backend
     environment:
       - BACKEND_URL=http://backend:8000
-      - PYTHONPATH=/app
     networks:
       - ichimoku-network
 
