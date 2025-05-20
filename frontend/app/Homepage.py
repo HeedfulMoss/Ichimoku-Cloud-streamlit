@@ -19,20 +19,19 @@ cloud_shift_len_in = st.sidebar.number_input("Cloud Shift Length", value=26)
 
 st.header(f'Ichimoku Cloud Chart: {ticker_name}')
 
-# Fetch the data
-df = fetch_ticker_data(ticker_name)
-
-# Apply Ichimoku Cloud
-df_ichimoku = apply_ichimoku_cloud(
-    df,
-    conversion_len=conversion_len_in,
-    base_len=base_len_in,
-    lagging_len=lagging_len_in,
-    leading_span_b_len=leading_span_b_len_in,
-    cloud_shift=cloud_shift_len_in
+resp = requests.get(
+    f"{backend_url}/api/ichimoku/{ticker_name}",
+    params={
+        "conversion_len":     conversion_len_in,
+        "base_len":           base_len_in,
+        "lagging_len":        lagging_len_in,
+        "leading_span_b_len": leading_span_b_len_in,
+        "cloud_shift":        cloud_shift_len_in,
+    },
 )
+data = resp.json()
+df = pd.DataFrame(data["data"])
 df_ichimoku = pd.DataFrame(data["ichimoku"])
-
 
 # Render the chart
 render_chart(df, df_ichimoku, ticker_name)

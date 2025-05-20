@@ -17,20 +17,14 @@ Ichimoku-Cloud-streamlit/
 │   │   ├── __init__.py         # Package initialization
 │   │   ├── Homepage.py         # Main Streamlit page
 │   │   ├── charts.py           # Chart rendering logic
-│   │   └── api_client.py       # Client to communicate with backend
+│   
 ├── backend/                    # FastAPI backend
 │   ├── Dockerfile              # Backend Docker configuration
 │   ├── requirements.txt        # Backend dependencies
 │   ├── app/                    # Backend application code
-│   │   ├── __init__.py         # Package initialization
 │   │   ├── main.py             # FastAPI main file
-│   │   ├── routers/            # API routes
-│   │   │   ├── __init__.py     # Router package initialization
-│   │   │   └── tickers.py      # Ticker data routes
-│   │   ├── services/           # Business logic
-│   │   │   ├── __init__.py     # Services package initialization
-│   │   │   ├── data_fetch.py   # Data fetching service
-│   │   │   └── ichimoku.py     # Ichimoku calculations
+│   │   ├── data_fetch.py   # Data fetching service
+│   │   ├── ichimoku.py     # Ichimoku calculations
 ```
 
 ## Project Description

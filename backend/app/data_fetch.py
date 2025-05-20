@@ -15,4 +15,6 @@ def fetch_ticker_data(ticker_name):
     df['time'] = pd.to_datetime(df['time'], errors='coerce')
     df['time'] = df['time'].dt.strftime('%Y-%m-%d')
 
+    print(df.head())
+
     return df
