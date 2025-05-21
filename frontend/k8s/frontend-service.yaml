@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  type: NodePort              # Local demo; on AWS switch to LoadBalancer :contentReference[oaicite:3]{index=3}
+  selector:
+    app: ichimoku-frontend
+  ports:
+  - port: 8501
+    targetPort: 8501
+    nodePort: 30001          # Must be in 30000–32767 :contentReference[oaicite:4]{index=4}

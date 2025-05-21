@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ichimoku-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ichimoku-frontend
+  template:
+    metadata:
+      labels:
+        app: ichimoku-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: ichimoku-cloud-streamlit-frontend:latest  # ← match your Compose image name
+        ports:
+        - containerPort: 8501
+        env:
+        - name: BACKEND_URL
+          value: "http://backend-service:8000"
+        imagePullPolicy: IfNotPresent

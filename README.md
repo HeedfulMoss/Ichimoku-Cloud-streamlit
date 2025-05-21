@@ -3,28 +3,32 @@
 A microservice-based application for visualizing Ichimoku Cloud technical indicators for stock tickers.
 
 ## Project Architecture
-
 ```
 Ichimoku-Cloud-streamlit/
 ├── README.md                   # Project documentation
-├── docker-compose.yml          # Docker compose configuration
-├── .dockerignore               # Files to ignore in Docker
+├── docker-compose.yml          # Docker Compose configuration
+├── .dockerignore               # Files to ignore in Docker builds
 ├── .gitignore                  # Files to ignore in Git
-├── frontend/                   # Streamlit frontend
+├── frontend/                   # Streamlit frontend service
 │   ├── Dockerfile              # Frontend Docker configuration
 │   ├── requirements.txt        # Frontend dependencies
 │   ├── app/                    # Frontend application code
 │   │   ├── __init__.py         # Package initialization
 │   │   ├── Homepage.py         # Main Streamlit page
 │   │   ├── charts.py           # Chart rendering logic
-│   
-├── backend/                    # FastAPI backend
-│   ├── Dockerfile              # Backend Docker configuration
-│   ├── requirements.txt        # Backend dependencies
-│   ├── app/                    # Backend application code
-│   │   ├── main.py             # FastAPI main file
-│   │   ├── data_fetch.py   # Data fetching service
-│   │   ├── ichimoku.py     # Ichimoku calculations
+│   └── k8s/                    # Kubernetes manifests for frontend
+│       ├── frontend-deployment.yaml
+│       └── frontend-service.yaml
+└── backend/                    # FastAPI backend service
+    ├── Dockerfile              # Backend Docker configuration
+    ├── requirements.txt        # Backend dependencies
+    ├── app/                    # Backend application code
+    │   ├── main.py             # FastAPI entrypoint
+    │   ├── data_fetch.py       # Data fetching service
+    │   ├── ichimoku.py         # Ichimoku calculation logic
+    └── k8s/                    # Kubernetes manifests for backend
+        ├── backend-deployment.yaml
+        └── backend-service.yaml
 ```
 
 ## Project Description
@@ -56,9 +60,58 @@ The project is structured as a microservice application with:
   - `services/data_fetch.py`: Service to fetch ticker data from Yahoo Finance
   - `services/ichimoku.py`: Service that calculates Ichimoku Cloud indicators
 
-## How to Run
+## How to Run:
 
-### Using Docker (Recommended)
+### Running with Kubernetes (current)
+
+Follow these steps from the project root to build your images and deploy both services into your local Kubernetes cluster:
+
+#### 1. Build Docker Images
+Use your existing Docker Compose file to build both services
+
+```bash
+docker-compose build
+```
+
+This will produce two local images tagged:
+
+```
+ichimoku-cloud-streamlit-backend:latest
+ichimoku-cloud-streamlit-frontend:latest
+```
+
+#### 2. Deploy to Kubernetes
+
+```bash
+kubectl apply -f backend/k8s/ -f frontend/k8s/
+```
+
+These commands will:
+
+* Create a **Deployment** (`backend-deployment.yaml`) running the FastAPI backend on port `8000`
+* Create a **ClusterIP Service** (`backend-service.yaml`) exposing port `8000` inside the cluster
+* Create a **Deployment** (`frontend-deployment.yaml`) running the Streamlit frontend on port `8501`, using `BACKEND_URL=http://backend-service:8000`
+* Create a **NodePort Service** (`frontend-service.yaml`) exposing port `8501` as **NodePort 30001** on `localhost`
+
+### 3. Access the Application
+
+Open your browser and navigate to:
+
+```
+http://localhost:30001
+```
+
+The Streamlit UI will connect to the backend via the in‑cluster service.
+
+#### 4. Stop the Kubernetes Deployment
+ Tear down both frontend and backend resources
+
+```bash
+kubectl delete -f backend/k8s/ -f frontend/k8s/
+```
+
+
+### Using just Docker
 
 1. Clone the repository:
 ```bash
@@ -78,7 +131,7 @@ http://localhost:8501
 
 This will start both the frontend and backend services with proper network configuration.
 
-### Manual Setup (For Development)
+### Manual Setup
 
 #### Backend
 
@@ -163,3 +216,7 @@ The Ichimoku Cloud (or Ichimoku Kinko Hyo) consists of five components:
 5. **Chikou Span (Lagging Span)**: Close price, plotted 26 periods behind
 
 The area between Senkou Span A and B is called the "cloud" or "kumo". When Span A is above Span B, the cloud is bullish (green). When Span B is above Span A, the cloud is bearish (red).
+
+The “cloud” (kumo) is the area between Spans A and B:
+* When Span A > Span B → bullish (green cloud)
+* When Span B > Span A → bearish (red cloud)

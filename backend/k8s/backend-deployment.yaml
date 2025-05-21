@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ichimoku-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ichimoku-backend
+  template:
+    metadata:
+      labels:
+        app: ichimoku-backend
+    spec:
+      containers:
+      - name: backend
+        image: ichimoku-cloud-streamlit-backend:latest   # ← match your Compose image name
+        ports:
+        - containerPort: 8000
+        imagePullPolicy: IfNotPresent
