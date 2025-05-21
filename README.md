@@ -47,7 +47,7 @@ The project is structured as a microservice application with:
    - Performs Ichimoku Cloud calculations
    - Provides data to the frontend via REST API
 
-### Key Files Explanation:
+## Key Files Explanation:
 
 - **Frontend**:
   - `Homepage.py`: Main Streamlit interface that handles user input and displays the chart
@@ -93,7 +93,7 @@ These commands will:
 * Create a **Deployment** (`frontend-deployment.yaml`) running the Streamlit frontend on port `8501`, using `BACKEND_URL=http://backend-service:8000`
 * Create a **NodePort Service** (`frontend-service.yaml`) exposing port `8501` as **NodePort 30001** on `localhost`
 
-### 3. Access the Application
+#### 3. Access the Application
 
 Open your browser and navigate to:
 
@@ -109,7 +109,6 @@ The Streamlit UI will connect to the backend via the in‑cluster service.
 ```bash
 kubectl delete -f backend/k8s/ -f frontend/k8s/
 ```
-
 
 ### Using just Docker
 
@@ -172,34 +171,34 @@ streamlit run app/Homepage.py
 http://localhost:8501
 ```
 
-## Docker Commands Reference
+### Docker Commands Reference
 
-### Build and Start Services
+#### Build and Start Services
 ```bash
 docker-compose up
 ```
 
-### Build and Start Services in Detached Mode
+#### Build and Start Services in Detached Mode
 ```bash
 docker-compose up -d
 ```
 
-### Stop Services
+#### Stop Services
 ```bash
 docker-compose down
 ```
 
-### Rebuild Services
+#### Rebuild Services
 ```bash
 docker-compose up --build
 ```
 
-### View Logs
+#### View Logs
 ```bash
 docker-compose logs
 ```
 
-### View Logs for a Specific Service
+#### View Logs for a Specific Service
 ```bash
 docker-compose logs frontend
 docker-compose logs backend
@@ -220,3 +219,38 @@ The area between Senkou Span A and B is called the "cloud" or "kumo". When Span 
 The “cloud” (kumo) is the area between Spans A and B:
 * When Span A > Span B → bullish (green cloud)
 * When Span B > Span A → bearish (red cloud)
+
+## Continuous Integration with GitHub Actions
+
+We use GitHub Actions to automatically build both Docker images on every push or pull request to `main`, ensuring the Dockerfiles remain valid.
+
+### 1. Workflow File
+`.github/workflows/docker-image-build.yml`
+
+### 2. Trigger
+`push` and `pull_request` events on the `main` branch
+
+### 3. Steps
+- **Checkout your code** (`actions/checkout@v3`)
+- **Set up Buildx** (`docker/setup-buildx-action@v2`)
+- **Build backend image**
+    - Context: `./backend`
+    - Dockerfile: `backend/Dockerfile`
+    - Tag: `ichimoku-cloud-streamlit-backend:latest`
+    - `push: false` (build-only)
+- **Build frontend image**
+    - Context: `./frontend`
+    - Dockerfile: `frontend/Dockerfile`
+    - Tag: `ichimoku-cloud-streamlit-frontend:latest`
+    - `push: false`
+
+### 4. How to enable
+- Commit and push the workflow file:
+  ```bash
+  git add .github/workflows/docker-image-build.yml
+  git commit -m "ci: Add Docker image build workflow"
+  git push origin main
+- View results on your repo's Actions tab.
+
+### 5. What it tests
+- Verifies that both backend/Dockerfile and frontend/Dockerfile build successfully—catching syntax errors, missing files, or broken build steps before you merge code.
