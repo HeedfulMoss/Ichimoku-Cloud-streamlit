@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import pandas as pd
@@ -39,12 +39,18 @@ def read_root():
     return {"status": "healthy", "message": "Ichimoku Cloud API is running"}
 
 @app.get("/data/{ticker_name}")
-async def get_data(ticker_name: str) -> Dict[str, Any]:
+async def get_data(ticker_name: str, use_csv: bool = Query(False, description="Use CSV backup data instead of Yahoo Finance")) -> Dict[str, Any]:
     """
     Fetch raw OHLCV for a given ticker.
     Example in print statement (for debugging):
     [{'time': '2024-01-02', 'open': 185.78945295661444, 'high': 187.07008341179338, 'low': 182.55315792151214, 'close': 184.29043579101562, 'volume': 82488700}, {'time': '2024-01-03', 'open': 182.88075702582086, 'high': 184.52869277861944, 'low': 182.09649169200898, 'close': 182.91053771972656, 'volume': 58414500}, {'time': '2024-01-04', 'open': 180.82578520690032, 'high': 181.7589539428833, 'low': 179.5650288616003, 'close': 180.58753967285156, 'volume': 71983600}, {'time': '2024-01-05', 'open': 180.66696287937032, 'high': 181.43135417752765, 'low': 178.86018676112266, 'close': 179.8628387451172, 'volume': 62303300}, {'time': '2024-01-08', 'open': 180.76622380895435, 'high': 184.2507162227342, 'low': 180.18051667398524, 'close': 184.21099853515625, 'volume': 59144500}]
     """
+    if ticker_name is "AAPL" and use_csv:
+        df = fetch_ticker_data(ticker_name, use_csv=use_csv)
+        print("DEBUG get_data – df.head():")
+        print(df.head().to_dict(orient="records"))
+        return {"status": "success", "data": df.to_dict(orient="records")}
+
     try:
         df = fetch_ticker_data(ticker_name)
         print("DEBUG get_data – df.head():")

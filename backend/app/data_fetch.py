@@ -2,12 +2,28 @@ import yfinance as yf
 import pandas as pd
 import streamlit as st
 import requests
+import os
+from pathlib import Path
 
-def fetch_ticker_data(ticker_name):
+def fetch_ticker_data_from_csv(ticker_name):
+    df = pd.read_csv(f'{ticker_name}.csv')
+
+    df = df.reset_index()
+    df.columns = ['time','open','high','low','close','volume']
+    df['time'] = pd.to_datetime(df['time'], errors='coerce')
+    df['time'] = df['time'].dt.strftime('%Y-%m-%d') 
+
+    return df
+
+def fetch_ticker_data(ticker_name, use_csv=False):
     """
     Fetch historic data from Yahoo Finance using yfinance for the given ticker.
     Returns a DataFrame with columns: [time, open, high, low, close, volume].
     """
+
+    if use_csv:
+        return fetch_ticker_data_from_csv(ticker_name)
+
     try:
         # Example: fetch data for 2024 only (adjust as you like)
         df = yf.Ticker(ticker_name).history(start="2024-01-01", end="2024-12-31")[['Open','High','Low','Close','Volume']]

@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ichimoku-streamlit-frontend
+  labels:
+    app: ichimoku-streamlit-frontend
 spec:
   replicas: 1
   selector:
@@ -14,10 +16,17 @@ spec:
     spec:
       containers:
       - name: streamlit-frontend
-        image: ichimoku-cloud-streamlit-streamlit-frontend:latest  # ← match your Compose image name
+        image: ichimoku-cloud-streamlit-streamlit-frontend:latest
         ports:
         - containerPort: 8501
         env:
         - name: BACKEND_URL
           value: "http://backend-service:8000"
         imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

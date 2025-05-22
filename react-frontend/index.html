@@ -32,6 +32,12 @@
       display: flex;
       flex-direction: column;
     }
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
     label {
       font-size: 0.8rem;
       margin-bottom: 0.2rem;
@@ -41,6 +47,10 @@
       padding: 0.5rem;
       border: 1px solid #ccc;
       border-radius: 4px;
+    }
+    input[type="checkbox"] {
+      padding: 0;
+      margin: 0;
     }
     button {
       padding: 0.5rem 1rem;
@@ -57,6 +67,21 @@
     button:disabled {
       background-color: #ccc;
       cursor: not-allowed;
+    }
+    #data-source-info {
+      background: #e8f4f8;
+      border-left: 4px solid #17a2b8;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      border-radius: 4px;
+    }
+    #data-source-info.csv-mode {
+      background: #fff3cd;
+      border-left-color: #ffc107;
+    }
+    #data-source-info.error {
+      background: #f8d7da;
+      border-left-color: #dc3545;
     }
     #chart-container {
       width: 100%;
@@ -80,6 +105,10 @@
       border-left: 3px solid #4CAF50;
       border-radius: 4px;
     }
+    #status.error {
+      background-color: #f8d7da;
+      border-left-color: #dc3545;
+    }
     .legend {
       display: flex;
       gap: 1rem;
@@ -99,6 +128,14 @@
       width: 20px;
       height: 10px;
       display: inline-block;
+    }
+    .warning {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      color: #856404;
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin: 0.5rem 0;
     }
   </style>
 </head>
@@ -131,7 +168,23 @@
         <label for="cloud-shift">Cloud Shift</label>
         <input type="number" id="cloud-shift" value="26" min="1">
       </div>
+      <div class="input-group">
+        <div class="checkbox-group">
+          <input type="checkbox" id="use-csv" />
+          <label for="use-csv">Use CSV Backup Data (AAPL only)</label>
+        </div>
+      </div>
       <button id="fetch-btn">Update Chart</button>
+    </div>
+    
+    <div id="csv-warning" class="warning" style="display: none;">
+      ⚠️ CSV backup is only available for AAPL ticker
+    </div>
+    
+    <div id="data-source-info" style="display: none;">
+      <strong>Data Source:</strong> <span id="source-text"></span> | 
+      <strong>Ticker:</strong> <span id="ticker-text"></span> | 
+      <strong>Data Points:</strong> <span id="count-text"></span>
     </div>
     
     <div class="legend">
@@ -166,7 +219,7 @@
       console.log('LightweightCharts library loaded:', typeof LightweightCharts);
       
       // Constants
-      const API_BASE_URL = 'http://localhost:8000';
+      const API_BASE_URL = window.location.port === '30002' ? 'http://localhost:30000' : 'http://localhost:8000';
       
       // DOM Elements
       const tickerInput = document.getElementById('ticker');
@@ -175,10 +228,16 @@
       const laggingLenInput = document.getElementById('lagging-len');
       const leadingSpanBLenInput = document.getElementById('leading-span-b-len');
       const cloudShiftInput = document.getElementById('cloud-shift');
+      const useCsvCheckbox = document.getElementById('use-csv');
       const fetchButton = document.getElementById('fetch-btn');
       const chartContainer = document.getElementById('chart-container');
       const volumeContainer = document.getElementById('volume-container');
       const statusElement = document.getElementById('status');
+      const csvWarning = document.getElementById('csv-warning');
+      const dataSourceInfo = document.getElementById('data-source-info');
+      const sourceText = document.getElementById('source-text');
+      const tickerText = document.getElementById('ticker-text');
+      const countText = document.getElementById('count-text');
       
       // Chart variables
       let chart = null;
@@ -195,6 +254,22 @@
       
       // Handle window resize (add only once)
       let resizeHandlerAdded = false;
+      
+      // Event handlers for CSV checkbox
+      function updateCsvWarning() {
+        const ticker = tickerInput.value.trim().toUpperCase();
+        const useCsv = useCsvCheckbox.checked;
+        
+        if (useCsv && ticker !== 'AAPL') {
+          csvWarning.style.display = 'block';
+        } else {
+          csvWarning.style.display = 'none';
+        }
+      }
+      
+      // Add event listeners for CSV warning
+      tickerInput.addEventListener('input', updateCsvWarning);
+      useCsvCheckbox.addEventListener('change', updateCsvWarning);
       
       // Initialize charts
       function initCharts() {
@@ -354,10 +429,34 @@
       }
       
       // Function to update status message
-      function updateStatus(message, isLoading = false) {
+      function updateStatus(message, isLoading = false, isError = false) {
         statusElement.textContent = message;
+        statusElement.className = isError ? 'error' : '';
         fetchButton.disabled = isLoading;
         console.log(message);
+      }
+      
+      // Function to show data source info
+      function showDataSourceInfo(data) {
+        if (data.source && data.ticker && data.count) {
+          sourceText.textContent = data.source.replace('_', ' ').toUpperCase();
+          tickerText.textContent = data.ticker;
+          countText.textContent = data.count;
+          
+          dataSourceInfo.className = data.source === 'csv' ? 'csv-mode' : '';
+          dataSourceInfo.style.display = 'block';
+        } else {
+          dataSourceInfo.style.display = 'none';
+        }
+      }
+      
+      // Function to show error in data source info
+      function showDataSourceError(message) {
+        sourceText.textContent = 'ERROR';
+        tickerText.textContent = '-';
+        countText.textContent = '-';
+        dataSourceInfo.className = 'error';
+        dataSourceInfo.style.display = 'block';
       }
       
       // Function to format data for charts
@@ -432,9 +531,17 @@
       // Function to fetch and display data
       async function fetchAndDisplayData() {
         const ticker = tickerInput.value.trim().toUpperCase();
+        const useCsv = useCsvCheckbox.checked;
         
         if (!ticker) {
-          updateStatus('Please enter a ticker symbol');
+          updateStatus('Please enter a ticker symbol', false, true);
+          return;
+        }
+        
+        // Validate CSV usage
+        if (useCsv && ticker !== 'AAPL') {
+          updateStatus('CSV backup is only available for AAPL ticker', false, true);
+          showDataSourceError('CSV only supports AAPL');
           return;
         }
         
@@ -449,10 +556,34 @@
           }
           
           // Step 1: Fetch raw OHLCV data
-          const response = await fetch(`${API_BASE_URL}/data/${ticker}`);
+          const params = new URLSearchParams();
+          if (useCsv) {
+            params.append('use_csv', 'true');
+          }
+          
+          const url = `${API_BASE_URL}/data/${ticker}${params.toString() ? '?' + params.toString() : ''}`;
+          const response = await fetch(url);
           
           if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+            const errorData = await response.json();
+            let errorMessage = errorData.detail || `HTTP ${response.status} error`;
+            
+            // Provide helpful error messages based on status code
+            if (response.status === 400) {
+              errorMessage = `Data validation error: ${errorData.detail}`;
+            } else if (response.status === 404) {
+              errorMessage = `Data not found: ${errorData.detail}`;
+              if (!useCsv) {
+                errorMessage += '\n💡 For AAPL, try enabling "Use CSV Backup Data"';
+              }
+            } else if (response.status === 503) {
+              errorMessage = `Service unavailable: ${errorData.detail}`;
+              if (!useCsv && ticker === 'AAPL') {
+                errorMessage += '\n💡 Try enabling "Use CSV Backup Data" as a workaround';
+              }
+            }
+            
+            throw new Error(errorMessage);
           }
           
           const rawData = await response.json();
@@ -463,9 +594,13 @@
           }
           
           if (rawData.data.length === 0) {
-            updateStatus(`No data available for ${ticker}`);
+            updateStatus(`No data available for ${ticker}`, false, true);
+            showDataSourceError('No data available');
             return;
           }
+          
+          // Show data source info
+          showDataSourceInfo(rawData);
           
           updateStatus(`Calculating Ichimoku indicators for ${ticker}...`, true);
           
@@ -488,7 +623,8 @@
           });
           
           if (!ichimokuResponse.ok) {
-            throw new Error(`Ichimoku calculation failed! Status: ${ichimokuResponse.status}`);
+            const errorData = await ichimokuResponse.json();
+            throw new Error(`Ichimoku calculation failed: ${errorData.detail || 'Unknown error'}`);
           }
           
           const ichimokuData = await ichimokuResponse.json();
@@ -524,11 +660,13 @@
           chart.timeScale().fitContent();
           volumeChart.timeScale().fitContent();
           
-          updateStatus(`Successfully loaded Ichimoku chart for ${ticker}`);
+          const dataSource = rawData.source === 'csv' ? 'CSV backup' : 'Yahoo Finance';
+          updateStatus(`Successfully loaded Ichimoku chart for ${ticker} from ${dataSource}`);
           
         } catch (error) {
           console.error('Error:', error);
-          updateStatus(`Error: ${error.message}`);
+          updateStatus(`Error: ${error.message}`, false, true);
+          showDataSourceError(error.message);
         }
       }
       
@@ -543,6 +681,7 @@
       
       // Initialize on load
       console.log("Initializing charts on load");
+      updateCsvWarning(); // Initial warning check
       if (initCharts()) {
         setTimeout(() => {
           console.log("Starting initial data fetch");

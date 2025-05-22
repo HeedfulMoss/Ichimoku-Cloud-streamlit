@@ -18,9 +18,17 @@ lagging_len_in = st.sidebar.number_input("Lagging Line Length", value=26)
 leading_span_b_len_in = st.sidebar.number_input("Leading Span B Line Length", value=52)
 cloud_shift_len_in = st.sidebar.number_input("Cloud Shift Length", value=26)
 
+# CSV Backup toggle
+use_csv_backup = st.sidebar.checkbox(
+    "Use CSV Backup Data", 
+    value=False,
+    help="Use local CSV backup data instead of Yahoo Finance (AAPL only)"
+)
+
 st.header(f'Ichimoku Cloud Chart: {ticker_name}')
 
 try:
+    params = {"use_csv": use_csv_backup} if use_csv_backup else {}
     resp_raw = requests.get(f"{backend_url}/data/{ticker_name}")
     resp_raw.raise_for_status()
     raw_payload = resp_raw.json()
