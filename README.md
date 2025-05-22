@@ -52,13 +52,11 @@ The project is structured as a microservice application with:
 - **Frontend**:
   - `Homepage.py`: Main Streamlit interface that handles user input and displays the chart
   - `charts.py`: Contains the logic for rendering charts using streamlit_lightweight_charts
-  - `api_client.py`: Client for communicating with the backend API
 
 - **Backend**:
   - `main.py`: FastAPI application entry point
-  - `routers/tickers.py`: Defines API endpoints for ticker data
-  - `services/data_fetch.py`: Service to fetch ticker data from Yahoo Finance
-  - `services/ichimoku.py`: Service that calculates Ichimoku Cloud indicators
+  - `data_fetch.py`: Service to fetch ticker data from Yahoo Finance
+  - `ichimoku.py`: Service that calculates Ichimoku Cloud indicators
 
 ## How to Run:
 

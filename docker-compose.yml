@@ -12,6 +12,15 @@ services:
     networks:
       - ichimoku-network
 
+  react-frontend:
+    build: ./react-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - ichimoku-network
+
   backend:
     build: ./backend
     ports:
