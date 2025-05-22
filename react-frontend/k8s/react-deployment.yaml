@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ichimoku-react-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ichimoku-react-frontend
+  template:
+    metadata:
+      labels:
+        app: ichimoku-react-frontend
+    spec:
+      containers:
+      - name: react-frontend
+        image: ichimoku-cloud-streamlit-react-frontend:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: REACT_APP_BACKEND_URL
+          value: "http://backend-service:8000"
+        imagePullPolicy: IfNotPresent

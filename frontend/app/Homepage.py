@@ -24,6 +24,8 @@ try:
     resp_raw = requests.get(f"{backend_url}/data/{ticker_name}")
     resp_raw.raise_for_status()
     raw_payload = resp_raw.json()
+    print("DEBUG raw_payload sample:")
+    print(raw_payload["data"][:5])
     df = pd.DataFrame(raw_payload["data"])
 except requests.RequestException as req_err:
     st.error(f"Error fetching raw data: {req_err}")
@@ -35,16 +37,20 @@ except ValueError as json_err:
 
 # Fetch Ichimoku
 try:
-    params = {
+    ich_req = {
+        "data": raw_payload["data"],
         "conversion_len": conversion_len_in,
         "base_len":       base_len_in,
         "lagging_len":    lagging_len_in,
         "leading_span_b_len": leading_span_b_len_in,
         "cloud_shift":        cloud_shift_len_in
     }
-    resp_ichi = requests.get(f"{backend_url}/ichimoku/{ticker_name}", params=params)
+
+    resp_ichi = requests.post(f"{backend_url}/ichimoku", json=ich_req)
     resp_ichi.raise_for_status()
     ichi_payload = resp_ichi.json()
+    # print("DEBUG ichi_payload sample:")
+    # print(ichi_payload["data"][:5])
     df_ichimoku = pd.DataFrame(ichi_payload["data"])
 except requests.RequestException as req_err:
     st.error(f"Error fetching Ichimoku data: {req_err}")

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Stock Chart</title>
+  <style>
+    body { 
+      font-family: sans-serif; 
+      margin: 0; 
+      padding: 1rem; 
+    }
+    #container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #333;
+    }
+    #ticker-input {
+      margin-bottom: 1rem;
+    }
+    #ticker {
+      padding: 0.5rem;
+      margin-right: 0.5rem;
+    }
+    #chart-container {
+      width: 100%;
+      height: 400px;
+    }
+    #status {
+      margin-top: 1rem;
+      padding: 0.5rem;
+      background-color: #f8f9fa;
+      border-left: 3px solid #666;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h1>Stock Chart</h1>
+    
+    <div id="ticker-input">
+      <input type="text" id="ticker" placeholder="Enter ticker symbol" value="AAPL">
+      <button id="fetch-btn">Fetch Data</button>
+    </div>
+    
+    <div id="chart-container"></div>
+    
+    <div id="status">Ready</div>
+  </div>
+
+  <!-- Use a specific version of the library to ensure compatibility -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+
+  <script>
+    // Wait for the library to load
+    window.onload = function() {
+      // Check if the library loaded correctly
+      if (typeof LightweightCharts === 'undefined') {
+        console.error('LightweightCharts library not loaded');
+        document.getElementById('status').textContent = 'Error: Chart library failed to load';
+        return;
+      }
+      
+      console.log('LightweightCharts library loaded:', typeof LightweightCharts);
+      
+      // Constants
+      const API_BASE_URL = 'http://localhost:8000';
+      
+      // DOM Elements
+      const tickerInput = document.getElementById('ticker');
+      const fetchButton = document.getElementById('fetch-btn');
+      const chartContainer = document.getElementById('chart-container');
+      const statusElement = document.getElementById('status');
+      
+      // Chart variables
+      let chart = null;
+      let candleSeries = null;
+      
+      // Initialize chart - must be called before setting data
+      function initChart() {
+        try {
+          // Clear previous chart if it exists
+          if (chart) {
+            chart.remove();
+          }
+          chartContainer.innerHTML = '';
+          
+          console.log('Creating chart...');
+          // Create a new chart
+          chart = LightweightCharts.createChart(chartContainer, {
+            width: chartContainer.clientWidth,
+            height: 400,
+            layout: {
+              background: { type: 'solid', color: 'white' },
+              textColor: '#333',
+            },
+            grid: {
+              vertLines: { color: 'rgba(197, 203, 206, 0.5)' },
+              horzLines: { color: 'rgba(197, 203, 206, 0.5)' }
+            },
+            crosshair: {
+              mode: LightweightCharts.CrosshairMode.Normal,
+            },
+            rightPriceScale: {
+              borderColor: 'rgba(197, 203, 206, 0.8)',
+            },
+            timeScale: {
+              borderColor: 'rgba(197, 203, 206, 0.8)',
+              timeVisible: true,
+            },
+          });
+          
+          console.log('Chart created:', chart);
+          console.log('Adding candlestick series...');
+          
+          // Add a candlestick series to the chart
+          candleSeries = chart.addCandlestickSeries({
+            upColor: 'rgba(38, 166, 154, 0.9)',
+            downColor: 'rgba(239, 83, 80, 0.9)',
+            borderVisible: false,
+            wickUpColor: 'rgba(38, 166, 154, 0.9)',
+            wickDownColor: 'rgba(239, 83, 80, 0.9)',
+          });
+
+          console.log('Candlestick series created:', candleSeries);
+          
+          // Handle window resize
+          window.addEventListener('resize', () => {
+            if (chart) {
+              chart.applyOptions({
+                width: chartContainer.clientWidth,
+              });
+            }
+          });
+
+          return true;
+        } catch (error) {
+          console.error('Error initializing chart:', error);
+          statusElement.textContent = `Error initializing chart: ${error.message}`;
+          return false;
+        }
+      }
+      
+      // Function to update status message
+      function updateStatus(message) {
+        statusElement.textContent = message;
+        console.log(message);
+      }
+      
+      // Function to fetch data from the backend
+      async function fetchData() {
+        const ticker = tickerInput.value.trim().toUpperCase();
+        
+        if (!ticker) {
+          updateStatus('Please enter a ticker symbol');
+          return;
+        }
+        
+        updateStatus(`Fetching data for ${ticker}...`);
+        
+        try {
+          // Make sure chart is initialized before fetching data
+          if (!chart || !candleSeries) {
+            console.log("Initializing chart before fetching data");
+            if (!initChart()) {
+              throw new Error('Failed to initialize chart');
+            }
+          }
+          
+          // Fetch data using the Fetch API
+          const response = await fetch(`${API_BASE_URL}/data/${ticker}`);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          console.log("Data received:", data);
+          
+          if (!data || !data.data || !Array.isArray(data.data)) {
+            throw new Error('Invalid data format received');
+          }
+          
+          // Check if we have data
+          if (data.data.length === 0) {
+            updateStatus(`No data available for ${ticker}`);
+            return;
+          }
+          
+          // Format data for the chart
+          const formattedData = data.data.map(item => ({
+            time: item.time,
+            open: item.open,
+            high: item.high,
+            low: item.low,
+            close: item.close
+          }));
+          
+          console.log("Formatted data sample:", formattedData.slice(0, 2));
+          
+          // Double-check that candleSeries exists before setting data
+          if (!candleSeries) {
+            console.log("candleSeries is null, reinitializing chart");
+            if (!initChart()) {
+              throw new Error('Failed to initialize chart series');
+            }
+          }
+          
+          // Set the data to the candlestick series
+          console.log("Setting data to candleSeries...");
+          candleSeries.setData(formattedData);
+          
+          // Fit content to view
+          chart.timeScale().fitContent();
+          
+          updateStatus(`Loaded data for ${ticker}`);
+          
+        } catch (error) {
+          console.error('Error:', error);
+          updateStatus(`Error: ${error.message}`);
+        }
+      }
+      
+      // Event listeners
+      fetchButton.addEventListener('click', fetchData);
+      
+      tickerInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          fetchData();
+        }
+      });
+      
+      // Initialize the chart first
+      console.log("Initializing chart on load");
+      if (initChart()) {
+        // Then fetch data after a small delay to ensure chart is ready
+        setTimeout(() => {
+          console.log("Starting initial data fetch");
+          fetchData();
+        }, 300);
+      }
+    };
+  </script>
+</body>
+</html>
