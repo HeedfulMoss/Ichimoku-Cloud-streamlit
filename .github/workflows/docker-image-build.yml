@@ -30,10 +30,19 @@ jobs:
           push: false
 
       # 4) Build the frontend image
-      - name: Build frontend image
+      - name: Build streamlit-frontend image
         uses: docker/build-push-action@v4
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          tags: ichimoku-cloud-streamlit-frontend:latest
+          context: ./streamlit-frontend
+          file: ./streamlit-frontend/Dockerfile
+          tags: ichimoku-cloud-streamlit-streamlit-frontend:latest
+          push: false
+          
+      # 5) Build the react-frontend image
+      - name: Build react-frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./react-frontend
+          file: ./react-frontend/Dockerfile
+          tags: ichimoku-cloud-streamlit-react-frontend:latest
           push: false

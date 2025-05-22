@@ -1,8 +1,8 @@
 version: '3'
 
 services:
-  frontend:
-    build: ./frontend
+  streamlit-frontend:
+    build: ./streamlit-frontend
     ports:
       - "8501:8501"
     depends_on:

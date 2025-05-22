@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ichimoku-frontend
+  name: ichimoku-streamlit-frontend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ichimoku-frontend
+      app: ichimoku-streamlit-frontend
   template:
     metadata:
       labels:
-        app: ichimoku-frontend
+        app: ichimoku-streamlit-frontend
     spec:
       containers:
-      - name: frontend
-        image: ichimoku-cloud-streamlit-frontend:latest  # ← match your Compose image name
+      - name: streamlit-frontend
+        image: ichimoku-cloud-streamlit-streamlit-frontend:latest  # ← match your Compose image name
         ports:
         - containerPort: 8501
         env:

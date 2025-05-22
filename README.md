@@ -1,24 +1,32 @@
-# Ichimoku Cloud Streamlit
+# Ichimoku Cloud Application
 
-A microservice-based application for visualizing Ichimoku Cloud technical indicators for stock tickers.
+A microservice-based application for visualizing Ichimoku Cloud technical indicators for stock tickers with multiple frontend options.
 
 ## Project Architecture
+
 ```
-Ichimoku-Cloud-streamlit/
+Ichimoku-Cloud-Application/
 ├── README.md                   # Project documentation
 ├── docker-compose.yml          # Docker Compose configuration
 ├── .dockerignore               # Files to ignore in Docker builds
 ├── .gitignore                  # Files to ignore in Git
-├── frontend/                   # Streamlit frontend service
-│   ├── Dockerfile              # Frontend Docker configuration
-│   ├── requirements.txt        # Frontend dependencies
-│   ├── app/                    # Frontend application code
+├── Makefile                    # Automation commands (optional)
+├── streamlit-frontend/         # Streamlit frontend service
+│   ├── Dockerfile              # Streamlit Docker configuration
+│   ├── requirements.txt        # Streamlit dependencies
+│   ├── app/                    # Streamlit application code
 │   │   ├── __init__.py         # Package initialization
 │   │   ├── Homepage.py         # Main Streamlit page
 │   │   ├── charts.py           # Chart rendering logic
-│   └── k8s/                    # Kubernetes manifests for frontend
-│       ├── frontend-deployment.yaml
-│       └── frontend-service.yaml
+│   └── k8s/                    # Kubernetes manifests for Streamlit
+│       ├── streamlit-deployment.yaml
+│       └── streamlit-service.yaml
+├── react-frontend/             # React/HTML frontend service
+│   ├── Dockerfile              # React frontend Docker configuration
+│   ├── index.html              # React/HTML application
+│   └── k8s/                    # Kubernetes manifests for React
+│       ├── react-deployment.yaml
+│       └── react-service.yaml
 └── backend/                    # FastAPI backend service
     ├── Dockerfile              # Backend Docker configuration
     ├── requirements.txt        # Backend dependencies
@@ -37,7 +45,7 @@ This application provides an interactive visualization of Ichimoku Cloud technic
 
 The project is structured as a microservice application with:
 
-1. **Frontend (Streamlit)**: Provides a user interface where users can:
+1. **Streamlit Frontend**: Provides a user interface where users can:
    - Input stock ticker symbols
    - Adjust Ichimoku Cloud parameters
    - View the resulting chart with candlesticks, volume, and Ichimoku Cloud indicators
@@ -46,8 +54,15 @@ The project is structured as a microservice application with:
    - Fetches historical stock data from Yahoo Finance
    - Performs Ichimoku Cloud calculations
    - Provides data to the frontend via REST API
+   - Endpoints: `/data/{ticker}` (GET) and `/ichimoku` (POST)  
 
-## Key Files Explanation:
+3. **React Frontend**: JavaScript/HTML-based interface:
+   - Native HTML/CSS interface with interactive controls
+   - Uses lightweight-charts library directly
+   - Synchronized dual-pane layout (main chart + volume)
+   - Complete Ichimoku Cloud visualization with proper chart interactions
+
+## Project Explanation:
 
 - **Frontend**:
   - `Homepage.py`: Main Streamlit interface that handles user input and displays the chart
@@ -57,6 +72,12 @@ The project is structured as a microservice application with:
   - `main.py`: FastAPI application entry point
   - `data_fetch.py`: Service to fetch ticker data from Yahoo Finance
   - `ichimoku.py`: Service that calculates Ichimoku Cloud indicators
+
+### Access the Applications
+- **React Frontend**: http://localhost:3000
+- **Streamlit Frontend**: http://localhost:8501  
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
 ## How to Run:
 
@@ -75,37 +96,21 @@ This will produce two local images tagged:
 
 ```
 ichimoku-cloud-streamlit-backend:latest
-ichimoku-cloud-streamlit-frontend:latest
+ichimoku-cloud-streamlit-streamlit-frontend:latest
+ichimoku-cloud-streamlit-react-frontend:latest
 ```
 
 #### 2. Deploy to Kubernetes
 
 ```bash
-kubectl apply -f backend/k8s/ -f frontend/k8s/
+kubectl apply -f backend/k8s/ -f streamlit-frontend/k8s/ -f react-frontend/k8s/
 ```
-
-These commands will:
-
-* Create a **Deployment** (`backend-deployment.yaml`) running the FastAPI backend on port `8000`
-* Create a **ClusterIP Service** (`backend-service.yaml`) exposing port `8000` inside the cluster
-* Create a **Deployment** (`frontend-deployment.yaml`) running the Streamlit frontend on port `8501`, using `BACKEND_URL=http://backend-service:8000`
-* Create a **NodePort Service** (`frontend-service.yaml`) exposing port `8501` as **NodePort 30001** on `localhost`
-
-#### 3. Access the Application
-
-Open your browser and navigate to:
-
-```
-http://localhost:30001
-```
-
-The Streamlit UI will connect to the backend via the in‑cluster service.
 
 #### 4. Stop the Kubernetes Deployment
  Tear down both frontend and backend resources
 
 ```bash
-kubectl delete -f backend/k8s/ -f frontend/k8s/
+kubectl delete -f backend/k8s/ -f streamlit-frontend/k8s/ -f react-frontend/k8s/
 ```
 
 ### Using just Docker
@@ -127,47 +132,6 @@ http://localhost:8501
 ```
 
 This will start both the frontend and backend services with proper network configuration.
-
-### Manual Setup
-
-#### Backend
-
-1. Navigate to the backend directory:
-```bash
-cd backend
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Run the FastAPI application:
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-#### Frontend
-
-1. Navigate to the frontend directory:
-```bash
-cd frontend
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Run the Streamlit application:
-```bash
-streamlit run app/Homepage.py
-```
-
-4. Open your browser and navigate to:
-```
-http://localhost:8501
-```
 
 ### Docker Commands Reference
 
@@ -193,14 +157,31 @@ docker-compose up --build
 
 #### View Logs
 ```bash
+# All services
 docker-compose logs
-```
 
-#### View Logs for a Specific Service
-```bash
-docker-compose logs frontend
+# Specific service
+docker-compose logs react-frontend
+docker-compose logs streamlit-frontend
 docker-compose logs backend
 ```
+
+### Debug Commands
+
+```bash
+# Check Docker containers
+docker ps
+docker logs <container-name>
+
+# Check Kubernetes resources
+kubectl get all
+kubectl describe pod <pod-name>
+kubectl logs <pod-name>
+
+# Test API connectivity
+curl http://localhost:8000/data/AAPL
+```
+
 
 ## Technical Background
 
@@ -214,21 +195,18 @@ The Ichimoku Cloud (or Ichimoku Kinko Hyo) consists of five components:
 
 The area between Senkou Span A and B is called the "cloud" or "kumo". When Span A is above Span B, the cloud is bullish (green). When Span B is above Span A, the cloud is bearish (red).
 
-The “cloud” (kumo) is the area between Spans A and B:
-* When Span A > Span B → bullish (green cloud)
-* When Span B > Span A → bearish (red cloud)
+The "cloud" (kumo) is the area between Senkou Spans A and B:
+- **Bullish Cloud**: When Span A > Span B → green cloud → uptrend
+- **Bearish Cloud**: When Span B > Span A → red cloud → downtrend
 
 ## Continuous Integration with GitHub Actions
 
 We use GitHub Actions to automatically build both Docker images on every push or pull request to `main`, ensuring the Dockerfiles remain valid.
 
-### 1. Workflow File
-`.github/workflows/docker-image-build.yml`
+### Steps
 
-### 2. Trigger
-`push` and `pull_request` events on the `main` branch
-
-### 3. Steps
+**Workflow**: `.github/workflows/docker-image-build.yml`
+- **Triggers**: `push` and `pull_request` events on the `main` branch
 - **Checkout your code** (`actions/checkout@v3`)
 - **Set up Buildx** (`docker/setup-buildx-action@v2`)
 - **Build backend image**
@@ -236,13 +214,19 @@ We use GitHub Actions to automatically build both Docker images on every push or
     - Dockerfile: `backend/Dockerfile`
     - Tag: `ichimoku-cloud-streamlit-backend:latest`
     - `push: false` (build-only)
-- **Build frontend image**
-    - Context: `./frontend`
-    - Dockerfile: `frontend/Dockerfile`
-    - Tag: `ichimoku-cloud-streamlit-frontend:latest`
+- **Build streamlit-frontend image**
+    - Context: `./streamlit-frontend`
+    - Dockerfile: `streamlit-frontend/Dockerfile`
+    - Tag: `ichimoku-cloud-streamlit-streamlit-frontend:latest`
     - `push: false`
+- **Build react-frontend image**
+    - Context: `./react-frontend`
+    - Dockerfile: `react-frontend/Dockerfile`
+    - Tag: `ichimoku-cloud-react-frontend:latest`
+    - `push: false`
+- **Validation**: Ensures Dockerfiles build successfully
 
-### 4. How to enable
+### How to enable
 - Commit and push the workflow file:
   ```bash
   git add .github/workflows/docker-image-build.yml
@@ -250,5 +234,18 @@ We use GitHub Actions to automatically build both Docker images on every push or
   git push origin main
 - View results on your repo's Actions tab.
 
-### 5. What it tests
+### What it tests
 - Verifies that both backend/Dockerfile and frontend/Dockerfile build successfully—catching syntax errors, missing files, or broken build steps before you merge code.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make changes and test locally
+4. Ensure Docker builds succeed
+5. Test Kubernetes deployment
+6. Submit a pull request
+
+## License
+
+[Add your license information here]
