@@ -20,6 +20,44 @@ spec:
         ports:
         - containerPort: 8000
         imagePullPolicy: IfNotPresent
+        env:
+        # AWS Configuration from ConfigMap
+        - name: AWS_BUCKET_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: aws-config
+              key: AWS_BUCKET_NAME
+        - name: USE_AWS_S3
+          valueFrom:
+            configMapKeyRef:
+              name: aws-config
+              key: USE_AWS_S3
+        - name: USE_AWS_LAMBDA
+          valueFrom:
+            configMapKeyRef:
+              name: aws-config
+              key: USE_AWS_LAMBDA
+        - name: USE_AWS_CLOUDWATCH
+          valueFrom:
+            configMapKeyRef:
+              name: aws-config
+              key: USE_AWS_CLOUDWATCH
+        # AWS Credentials from Secret
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: aws-secret-access-key
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: aws-default-region
         resources:
           requests:
             memory: "256Mi"

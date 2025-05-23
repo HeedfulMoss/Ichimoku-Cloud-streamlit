@@ -52,6 +52,10 @@
       padding: 0;
       margin: 0;
     }
+    input:disabled {
+      background-color: #f5f5f5;
+      cursor: not-allowed;
+    }
     button {
       padding: 0.5rem 1rem;
       background-color: #4CAF50;
@@ -68,6 +72,26 @@
       background-color: #ccc;
       cursor: not-allowed;
     }
+    #aws-status-info {
+      background: #e8f4f8;
+      border-left: 4px solid #17a2b8;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    #aws-status-info.aws-connected {
+      background: #d4edda;
+      border-left-color: #28a745;
+    }
+    #aws-status-info.aws-warning {
+      background: #fff3cd;
+      border-left-color: #ffc107;
+    }
+    #aws-status-info.aws-error {
+      background: #f8d7da;
+      border-left-color: #dc3545;
+    }
     #data-source-info {
       background: #e8f4f8;
       border-left: 4px solid #17a2b8;
@@ -78,6 +102,10 @@
     #data-source-info.csv-mode {
       background: #fff3cd;
       border-left-color: #ffc107;
+    }
+    #data-source-info.s3-mode {
+      background: #d4edda;
+      border-left-color: #28a745;
     }
     #data-source-info.error {
       background: #f8d7da;
@@ -137,6 +165,23 @@
       border-radius: 4px;
       margin: 0.5rem 0;
     }
+    .data-source-controls {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+    .data-source-controls h4 {
+      margin: 0 0 0.5rem 0;
+      color: #495057;
+      font-size: 0.9rem;
+    }
+    .checkbox-row {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
   </style>
 </head>
 <body>
@@ -168,17 +213,37 @@
         <label for="cloud-shift">Cloud Shift</label>
         <input type="number" id="cloud-shift" value="26" min="1">
       </div>
-      <div class="input-group">
-        <div class="checkbox-group">
-          <input type="checkbox" id="use-csv" />
-          <label for="use-csv">Use CSV Backup Data (AAPL only)</label>
-        </div>
-      </div>
       <button id="fetch-btn">Update Chart</button>
     </div>
     
+    <div class="data-source-controls">
+      <h4>Data Source Options</h4>
+      <div class="checkbox-row">
+        <div class="checkbox-group">
+          <input type="checkbox" id="use-csv" />
+          <label for="use-csv">Use Local CSV (AAPL only)</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="use-s3" />
+          <label for="use-s3">Use AWS S3 Data</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="use-cache" checked />
+          <label for="use-cache">Use S3 Cache</label>
+        </div>
+      </div>
+    </div>
+    
     <div id="csv-warning" class="warning" style="display: none;">
-      ⚠️ CSV backup is only available for AAPL ticker
+      ⚠️ Local CSV backup is only available for AAPL ticker
+    </div>
+    
+    <div id="s3-warning" class="warning" style="display: none;">
+      ⚠️ AWS S3 is not connected. S3 options will be ignored.
+    </div>
+    
+    <div id="aws-status-info" style="display: none;">
+      <strong>AWS Status:</strong> <span id="aws-status-text"></span>
     </div>
     
     <div id="data-source-info" style="display: none;">
@@ -229,11 +294,16 @@
       const leadingSpanBLenInput = document.getElementById('leading-span-b-len');
       const cloudShiftInput = document.getElementById('cloud-shift');
       const useCsvCheckbox = document.getElementById('use-csv');
+      const useS3Checkbox = document.getElementById('use-s3');
+      const useCacheCheckbox = document.getElementById('use-cache');
       const fetchButton = document.getElementById('fetch-btn');
       const chartContainer = document.getElementById('chart-container');
       const volumeContainer = document.getElementById('volume-container');
       const statusElement = document.getElementById('status');
       const csvWarning = document.getElementById('csv-warning');
+      const s3Warning = document.getElementById('s3-warning');
+      const awsStatusInfo = document.getElementById('aws-status-info');
+      const awsStatusText = document.getElementById('aws-status-text');
       const dataSourceInfo = document.getElementById('data-source-info');
       const sourceText = document.getElementById('source-text');
       const tickerText = document.getElementById('ticker-text');
@@ -252,10 +322,60 @@
       let bullishCloudSeries = null;
       let bearishCloudSeries = null;
       
+      // AWS status tracking
+      let awsS3Available = false;
+      
       // Handle window resize (add only once)
       let resizeHandlerAdded = false;
       
-      // Event handlers for CSV checkbox
+      // Function to check AWS status
+      async function checkAWSStatus() {
+        try {
+          updateStatus('Checking AWS status...', true);
+          const response = await fetch(`${API_BASE_URL}/aws/status`);
+          const status = await response.json();
+          
+          awsS3Available = status.s3_connected;
+          
+          if (status.s3_connected) {
+            awsStatusText.textContent = `✅ S3 Connected (${status.bucket_name})`;
+            awsStatusInfo.className = 'aws-connected';
+            useS3Checkbox.disabled = false;
+            s3Warning.style.display = 'none';
+          } else if (status.aws_available && status.s3_enabled) {
+            awsStatusText.textContent = '⚠️ S3 Enabled but not connected - check configuration';
+            awsStatusInfo.className = 'aws-warning';
+            useS3Checkbox.disabled = true;
+            useS3Checkbox.checked = false;
+          } else if (status.aws_available) {
+            awsStatusText.textContent = '⚠️ AWS available but S3 disabled';
+            awsStatusInfo.className = 'aws-warning';
+            useS3Checkbox.disabled = true;
+            useS3Checkbox.checked = false;
+          } else {
+            awsStatusText.textContent = '❌ AWS not available';
+            awsStatusInfo.className = 'aws-error';
+            useS3Checkbox.disabled = true;
+            useS3Checkbox.checked = false;
+          }
+          
+          awsStatusInfo.style.display = 'block';
+          
+          // Update S3 warning visibility
+          updateS3Warning();
+          
+        } catch (error) {
+          console.error('Error checking AWS status:', error);
+          awsStatusText.textContent = '❌ Cannot connect to backend';
+          awsStatusInfo.className = 'aws-error';
+          awsStatusInfo.style.display = 'block';
+          useS3Checkbox.disabled = true;
+          useS3Checkbox.checked = false;
+          awsS3Available = false;
+        }
+      }
+      
+      // Event handlers for warning updates
       function updateCsvWarning() {
         const ticker = tickerInput.value.trim().toUpperCase();
         const useCsv = useCsvCheckbox.checked;
@@ -267,9 +387,20 @@
         }
       }
       
-      // Add event listeners for CSV warning
+      function updateS3Warning() {
+        const useS3 = useS3Checkbox.checked;
+        
+        if (useS3 && !awsS3Available) {
+          s3Warning.style.display = 'block';
+        } else {
+          s3Warning.style.display = 'none';
+        }
+      }
+      
+      // Add event listeners for warnings
       tickerInput.addEventListener('input', updateCsvWarning);
       useCsvCheckbox.addEventListener('change', updateCsvWarning);
+      useS3Checkbox.addEventListener('change', updateS3Warning);
       
       // Initialize charts
       function initCharts() {
@@ -423,7 +554,7 @@
           return true;
         } catch (error) {
           console.error('Error initializing charts:', error);
-          statusElement.textContent = `Error initializing charts: ${error.message}`;
+          updateStatus(`Error initializing charts: ${error.message}`, false, true);
           return false;
         }
       }
@@ -439,11 +570,26 @@
       // Function to show data source info
       function showDataSourceInfo(data) {
         if (data.source && data.ticker && data.count) {
-          sourceText.textContent = data.source.replace('_', ' ').toUpperCase();
+          const sourceDisplay = {
+            's3_cache': 'AWS S3 Cache',
+            's3_csv': 'AWS S3 CSV',
+            'local_csv': 'Local CSV',
+            'yahoo_finance': 'Yahoo Finance'
+          };
+          
+          sourceText.textContent = sourceDisplay[data.source] || data.source.toUpperCase();
           tickerText.textContent = data.ticker;
           countText.textContent = data.count;
           
-          dataSourceInfo.className = data.source === 'csv' ? 'csv-mode' : '';
+          // Set appropriate styling
+          if (data.source.startsWith('s3_')) {
+            dataSourceInfo.className = 's3-mode';
+          } else if (data.source === 'local_csv') {
+            dataSourceInfo.className = 'csv-mode';
+          } else {
+            dataSourceInfo.className = '';
+          }
+          
           dataSourceInfo.style.display = 'block';
         } else {
           dataSourceInfo.style.display = 'none';
@@ -532,6 +678,8 @@
       async function fetchAndDisplayData() {
         const ticker = tickerInput.value.trim().toUpperCase();
         const useCsv = useCsvCheckbox.checked;
+        const useS3 = useS3Checkbox.checked;
+        const useCache = useCacheCheckbox.checked;
         
         if (!ticker) {
           updateStatus('Please enter a ticker symbol', false, true);
@@ -540,9 +688,15 @@
         
         // Validate CSV usage
         if (useCsv && ticker !== 'AAPL') {
-          updateStatus('CSV backup is only available for AAPL ticker', false, true);
-          showDataSourceError('CSV only supports AAPL');
+          updateStatus('Local CSV backup is only available for AAPL ticker', false, true);
+          showDataSourceError('Local CSV only supports AAPL');
           return;
+        }
+        
+        // Warn about S3 usage if not available
+        if (useS3 && !awsS3Available) {
+          updateStatus('AWS S3 is not available. Continuing without S3...', false, false);
+          // Don't return, just continue with other sources
         }
         
         updateStatus(`Fetching data for ${ticker}...`, true);
@@ -557,11 +711,13 @@
           
           // Step 1: Fetch raw OHLCV data
           const params = new URLSearchParams();
-          if (useCsv) {
-            params.append('use_csv', 'true');
-          }
+          if (useCsv) params.append('use_csv', 'true');
+          if (useS3) params.append('use_s3', 'true');
+          if (useCache) params.append('use_cache', 'true');
           
           const url = `${API_BASE_URL}/data/${ticker}${params.toString() ? '?' + params.toString() : ''}`;
+          console.log('Fetching from:', url);
+          
           const response = await fetch(url);
           
           if (!response.ok) {
@@ -573,14 +729,8 @@
               errorMessage = `Data validation error: ${errorData.detail}`;
             } else if (response.status === 404) {
               errorMessage = `Data not found: ${errorData.detail}`;
-              if (!useCsv) {
-                errorMessage += '\n💡 For AAPL, try enabling "Use CSV Backup Data"';
-              }
             } else if (response.status === 503) {
               errorMessage = `Service unavailable: ${errorData.detail}`;
-              if (!useCsv && ticker === 'AAPL') {
-                errorMessage += '\n💡 Try enabling "Use CSV Backup Data" as a workaround';
-              }
             }
             
             throw new Error(errorMessage);
@@ -660,7 +810,14 @@
           chart.timeScale().fitContent();
           volumeChart.timeScale().fitContent();
           
-          const dataSource = rawData.source === 'csv' ? 'CSV backup' : 'Yahoo Finance';
+          const sourceDisplay = {
+            's3_cache': 'AWS S3 cache',
+            's3_csv': 'AWS S3 CSV',
+            'local_csv': 'local CSV backup',
+            'yahoo_finance': 'Yahoo Finance'
+          };
+          
+          const dataSource = sourceDisplay[rawData.source] || rawData.source;
           updateStatus(`Successfully loaded Ichimoku chart for ${ticker} from ${dataSource}`);
           
         } catch (error) {
@@ -680,13 +837,16 @@
       });
       
       // Initialize on load
-      console.log("Initializing charts on load");
+      console.log("Initializing application...");
       updateCsvWarning(); // Initial warning check
+      updateS3Warning(); // Initial S3 warning check
+      
       if (initCharts()) {
-        setTimeout(() => {
-          console.log("Starting initial data fetch");
-          fetchAndDisplayData();
-        }, 300);
+        console.log("Charts initialized, checking AWS status...");
+        checkAWSStatus().then(() => {
+          console.log("Starting initial data fetch...");
+          setTimeout(fetchAndDisplayData, 300);
+        });
       }
     };
   </script>

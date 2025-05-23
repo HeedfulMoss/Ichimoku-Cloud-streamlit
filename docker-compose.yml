@@ -25,6 +25,14 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
+    environment:
+      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
+      - USE_AWS_S3=${USE_AWS_S3}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - USE_AWS_LAMBDA=${USE_AWS_LAMBDA}
+      - USE_AWS_CLOUDWATCH=${USE_AWS_CLOUDWATCH}
+    volumes:
+      - ~/.aws:/root/.aws:ro  # Mount AWS credentials (read-only)
     networks:
       - ichimoku-network
 
