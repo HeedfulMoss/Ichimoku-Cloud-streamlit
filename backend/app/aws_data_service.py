@@ -204,7 +204,7 @@ class AWSDataService:
             files = []
             for obj in response.get('Contents', []):
                 key = obj['Key']
-                if key.endswith('.csv'):
+                if key.endswith('.csv') and '_2024_data.csv' in key:
                     ticker = key.split('/')[-1].split('_')[0]
                     files.append({
                         'ticker': ticker,
@@ -289,4 +289,95 @@ class AWSDataService:
                 
         except Exception as e:
             logger.error(f"Force cache cleanup failed: {e}")
+            return False
+
+    # NEW LAMBDA INTEGRATION METHODS
+
+    def get_available_tickers(self):
+        """Get list of available tickers from S3"""
+        if not self.is_available():
+            return []
+        
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key='data/available_tickers.txt'
+            )
+            ticker_list = response['Body'].read().decode('utf-8').strip()
+            tickers = [t.strip() for t in ticker_list.split('\n') if t.strip()]
+            logger.info(f"Retrieved {len(tickers)} available tickers from S3")
+            return sorted(tickers)
+        except self.s3_client.exceptions.NoSuchKey:
+            logger.info("No ticker list found in S3")
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching ticker list: {e}")
+            return []
+
+    def trigger_lambda_data_collection(self, ticker, lambda_function_name):
+        """Trigger Lambda function to collect data for a ticker"""
+        if not self.is_available():
+            return {"success": False, "error": "S3 not available"}
+        
+        try:
+            # Create Lambda client (will use same AWS credentials as S3)
+            lambda_client = boto3.client('lambda')
+            
+            payload = {
+                "ticker": ticker.upper(),
+                "bucket_name": self.bucket_name
+            }
+            
+            logger.info(f"Triggering Lambda function {lambda_function_name} for {ticker}")
+            
+            response = lambda_client.invoke(
+                FunctionName=lambda_function_name,
+                InvocationType='RequestResponse',  # Synchronous execution
+                Payload=json.dumps(payload)
+            )
+            
+            # Parse Lambda response
+            response_payload = json.loads(response['Payload'].read().decode('utf-8'))
+            
+            if response_payload.get('statusCode') == 200:
+                body = json.loads(response_payload['body'])
+                logger.info(f"Lambda execution successful for {ticker}: {body.get('message')}")
+                return {
+                    "success": True,
+                    "message": body.get('message', 'Success'),
+                    "ticker": ticker,
+                    "rows_processed": body.get('rows_processed', 0),
+                    "csv_key": body.get('csv_key', ''),
+                    "timestamp": body.get('timestamp', '')
+                }
+            else:
+                error_body = json.loads(response_payload.get('body', '{}'))
+                logger.error(f"Lambda execution failed for {ticker}: {error_body.get('error')}")
+                return {
+                    "success": False,
+                    "error": error_body.get('error', 'Lambda execution failed'),
+                    "ticker": ticker
+                }
+                
+        except Exception as e:
+            logger.error(f"Error triggering Lambda for {ticker}: {e}")
+            return {
+                "success": False,
+                "error": f"Failed to trigger data collection: {str(e)}",
+                "ticker": ticker
+            }
+
+    def check_ticker_data_exists(self, ticker):
+        """Check if data for a ticker already exists in S3"""
+        if not self.is_available():
+            return False
+        
+        try:
+            key = f"data/{ticker}_2024_data.csv"
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            return True
+        except self.s3_client.exceptions.NoSuchKey:
+            return False
+        except Exception as e:
+            logger.error(f"Error checking if {ticker} data exists: {e}")
             return False

@@ -65,12 +65,24 @@
       cursor: pointer;
       margin-top: 1.3rem;
     }
-    button:hover {
+    button:hover:not(:disabled) {
       background-color: #45a049;
     }
     button:disabled {
       background-color: #ccc;
       cursor: not-allowed;
+    }
+    button.secondary {
+      background-color: #17a2b8;
+    }
+    button.secondary:hover:not(:disabled) {
+      background-color: #138496;
+    }
+    button.collect {
+      background-color: #fd7e14;
+    }
+    button.collect:hover:not(:disabled) {
+      background-color: #e85d04;
     }
     #aws-status-info {
       background: #e8f4f8;
@@ -182,6 +194,69 @@
       gap: 1.5rem;
       flex-wrap: wrap;
     }
+    /* Lambda Collection Styles */
+    .lambda-controls {
+      background: #e7f3ff;
+      border: 1px solid #b3d9ff;
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+    .lambda-controls h4 {
+      margin: 0 0 0.75rem 0;
+      color: #0056b3;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .lambda-input-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .lambda-input-row input[type="text"] {
+      min-width: 120px;
+      flex: 1;
+    }
+    .lambda-input-row button {
+      margin-top: 0;
+      white-space: nowrap;
+    }
+    #lambda-status {
+      margin-top: 0.75rem;
+      padding: 0.5rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    #lambda-status.success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+    }
+    #lambda-status.error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+    #lambda-status.info {
+      background: #e2e3e5;
+      border: 1px solid #d6d8db;
+      color: #383d41;
+    }
+    #available-tickers {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: #495057;
+    }
+    #ticker-list {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      margin-left: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -220,8 +295,8 @@
       <h4>Data Source Options</h4>
       <div class="checkbox-row">
         <div class="checkbox-group">
-          <input type="checkbox" id="use-csv" />
-          <label for="use-csv">Use Local CSV (AAPL only)</label>
+          <input type="checkbox" id="use-csv" checked />
+          <label for="use-csv">Use Local CSV Backup</label>
         </div>
         <div class="checkbox-group">
           <input type="checkbox" id="use-s3" />
@@ -234,8 +309,21 @@
       </div>
     </div>
     
-    <div id="csv-warning" class="warning" style="display: none;">
-      ⚠️ Local CSV backup is only available for AAPL ticker
+    <!-- NEW LAMBDA COLLECTION CONTROLS -->
+    <div class="lambda-controls">
+      <h4>🚀 Data Collection (AWS Lambda)</h4>
+      <div class="lambda-input-row">
+        <div class="input-group" style="margin: 0;">
+          <label for="collect-ticker">Ticker to Collect</label>
+          <input type="text" id="collect-ticker" placeholder="e.g., MSFT, GOOGL" value="">
+        </div>
+        <button id="collect-btn" class="collect" disabled>Collect Data</button>
+        <button id="list-tickers-btn" class="secondary">Refresh List</button>
+      </div>
+      <div id="lambda-status" style="display: none;"></div>
+      <div id="available-tickers" style="display: none;">
+        <strong>Available in S3:</strong><span id="ticker-list"></span>
+      </div>
     </div>
     
     <div id="s3-warning" class="warning" style="display: none;">
@@ -297,10 +385,19 @@
       const useS3Checkbox = document.getElementById('use-s3');
       const useCacheCheckbox = document.getElementById('use-cache');
       const fetchButton = document.getElementById('fetch-btn');
+      
+      // Lambda elements
+      const collectTickerInput = document.getElementById('collect-ticker');
+      const collectButton = document.getElementById('collect-btn');
+      const listTickersButton = document.getElementById('list-tickers-btn');
+      const lambdaStatus = document.getElementById('lambda-status');
+      const availableTickers = document.getElementById('available-tickers');
+      const tickerList = document.getElementById('ticker-list');
+      
+      // Status elements
       const chartContainer = document.getElementById('chart-container');
       const volumeContainer = document.getElementById('volume-container');
       const statusElement = document.getElementById('status');
-      const csvWarning = document.getElementById('csv-warning');
       const s3Warning = document.getElementById('s3-warning');
       const awsStatusInfo = document.getElementById('aws-status-info');
       const awsStatusText = document.getElementById('aws-status-text');
@@ -324,6 +421,7 @@
       
       // AWS status tracking
       let awsS3Available = false;
+      let awsLambdaAvailable = false;
       
       // Handle window resize (add only once)
       let resizeHandlerAdded = false;
@@ -336,6 +434,7 @@
           const status = await response.json();
           
           awsS3Available = status.s3_connected;
+          awsLambdaAvailable = status.lambda_enabled;
           
           if (status.s3_connected) {
             awsStatusText.textContent = `✅ S3 Connected (${status.bucket_name})`;
@@ -361,6 +460,9 @@
           
           awsStatusInfo.style.display = 'block';
           
+          // Check Lambda status
+          await checkLambdaStatus();
+          
           // Update S3 warning visibility
           updateS3Warning();
           
@@ -372,21 +474,49 @@
           useS3Checkbox.disabled = true;
           useS3Checkbox.checked = false;
           awsS3Available = false;
+          awsLambdaAvailable = false;
+          
+          collectButton.disabled = true;
+          collectButton.textContent = 'Lambda Unavailable';
+        }
+      }
+      
+      // Function to check Lambda status
+      async function checkLambdaStatus() {
+        try {
+          const response = await fetch(`${API_BASE_URL}/aws/lambda/status`);
+          const lambdaStatus = await response.json();
+          
+          if (lambdaStatus.lambda_enabled && lambdaStatus.function_name && awsS3Available) {
+            collectButton.disabled = false;
+            collectButton.textContent = 'Collect Data';
+            awsLambdaAvailable = true;
+            updateLambdaStatus('Lambda data collection ready', false);
+          } else if (!lambdaStatus.lambda_enabled) {
+            collectButton.disabled = true;
+            collectButton.textContent = 'Lambda Disabled';
+            awsLambdaAvailable = false;
+            updateLambdaStatus('Lambda is disabled in configuration', true);
+          } else if (!awsS3Available) {
+            collectButton.disabled = true;
+            collectButton.textContent = 'S3 Required';
+            awsLambdaAvailable = false;
+            updateLambdaStatus('S3 connection required for Lambda functionality', true);
+          } else {
+            collectButton.disabled = true;
+            collectButton.textContent = 'Lambda Not Configured';
+            awsLambdaAvailable = false;
+            updateLambdaStatus('Lambda function not properly configured', true);
+          }
+        } catch (error) {
+          collectButton.disabled = true;
+          collectButton.textContent = 'Lambda Error';
+          awsLambdaAvailable = false;
+          updateLambdaStatus('Failed to check Lambda status', true);
         }
       }
       
       // Event handlers for warning updates
-      function updateCsvWarning() {
-        const ticker = tickerInput.value.trim().toUpperCase();
-        const useCsv = useCsvCheckbox.checked;
-        
-        if (useCsv && ticker !== 'AAPL') {
-          csvWarning.style.display = 'block';
-        } else {
-          csvWarning.style.display = 'none';
-        }
-      }
-      
       function updateS3Warning() {
         const useS3 = useS3Checkbox.checked;
         
@@ -398,9 +528,83 @@
       }
       
       // Add event listeners for warnings
-      tickerInput.addEventListener('input', updateCsvWarning);
-      useCsvCheckbox.addEventListener('change', updateCsvWarning);
       useS3Checkbox.addEventListener('change', updateS3Warning);
+      
+      // Lambda functions
+      async function collectTickerData() {
+        const ticker = collectTickerInput.value.trim().toUpperCase();
+        
+        if (!ticker) {
+          updateLambdaStatus('Please enter a ticker symbol', true);
+          return;
+        }
+        
+        updateLambdaStatus(`Collecting data for ${ticker}...`, false, 'info');
+        collectButton.disabled = true;
+        collectButton.textContent = 'Collecting...';
+        
+        try {
+          const response = await fetch(`${API_BASE_URL}/aws/collect/${ticker}`, {
+            method: 'POST'
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            const message = result.data_existed 
+              ? `✅ Updated data for ${ticker} (${result.rows_processed} rows)`
+              : `✅ Collected ${result.rows_processed} rows for ${ticker}`;
+            updateLambdaStatus(message, false, 'success');
+            
+            // Clear input and refresh available tickers
+            collectTickerInput.value = '';
+            setTimeout(listAvailableTickers, 1000);
+            
+          } else {
+            const error = await response.json();
+            updateLambdaStatus(`❌ Error: ${error.detail}`, true);
+          }
+          
+        } catch (error) {
+          updateLambdaStatus(`❌ Network error: ${error.message}`, true);
+        } finally {
+          collectButton.disabled = false;
+          collectButton.textContent = 'Collect Data';
+        }
+      }
+      
+      async function listAvailableTickers() {
+        try {
+          const response = await fetch(`${API_BASE_URL}/aws/tickers`);
+          const result = await response.json();
+          
+          if (result.tickers && result.tickers.length > 0) {
+            tickerList.textContent = result.tickers.join(', ');
+            availableTickers.style.display = 'block';
+          } else {
+            tickerList.textContent = 'None available yet';
+            availableTickers.style.display = 'block';
+          }
+        } catch (error) {
+          console.error('Error listing tickers:', error);
+          tickerList.textContent = 'Error loading list';
+          availableTickers.style.display = 'block';
+        }
+      }
+      
+      function updateLambdaStatus(message, isError = false, type = 'info') {
+        lambdaStatus.textContent = message;
+        lambdaStatus.className = isError ? 'error' : (type === 'success' ? 'success' : 'info');
+        lambdaStatus.style.display = 'block';
+        
+        // Auto-hide success/info messages after 5 seconds
+        if (!isError) {
+          setTimeout(() => {
+            if (lambdaStatus.textContent === message) {
+              lambdaStatus.style.display = 'none';
+            }
+          }, 5000);
+        }
+      }
       
       // Initialize charts
       function initCharts() {
@@ -686,13 +890,6 @@
           return;
         }
         
-        // Validate CSV usage
-        if (useCsv && ticker !== 'AAPL') {
-          updateStatus('Local CSV backup is only available for AAPL ticker', false, true);
-          showDataSourceError('Local CSV only supports AAPL');
-          return;
-        }
-        
         // Warn about S3 usage if not available
         if (useS3 && !awsS3Available) {
           updateStatus('AWS S3 is not available. Continuing without S3...', false, false);
@@ -836,15 +1033,25 @@
         }
       });
       
+      // Lambda event listeners
+      collectButton.addEventListener('click', collectTickerData);
+      listTickersButton.addEventListener('click', listAvailableTickers);
+      
+      collectTickerInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          collectTickerData();
+        }
+      });
+      
       // Initialize on load
       console.log("Initializing application...");
-      updateCsvWarning(); // Initial warning check
       updateS3Warning(); // Initial S3 warning check
       
       if (initCharts()) {
         console.log("Charts initialized, checking AWS status...");
         checkAWSStatus().then(() => {
-          console.log("Starting initial data fetch...");
+          console.log("Loading available tickers and starting initial data fetch...");
+          listAvailableTickers();
           setTimeout(fetchAndDisplayData, 300);
         });
       }

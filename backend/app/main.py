@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
@@ -29,8 +28,8 @@ logger = logging.getLogger("ichimoku-backend")
 # Initialize FastAPI app
 app = FastAPI(
     title="Ichimoku Cloud API", 
-    description="Backend API for Ichimoku Cloud Chart Application with AWS S3 Integration",
-    version="1.0.0"
+    description="Backend API for Ichimoku Cloud Chart Application with AWS S3 and Lambda Integration",
+    version="1.2.0"
 )
 
 # Add CORS middleware to allow frontend requests
@@ -47,6 +46,7 @@ AWS_BUCKET_NAME = os.getenv("AWS_BUCKET_NAME", "")
 USE_AWS_S3 = os.getenv("USE_AWS_S3", "true").lower() == "true"
 USE_AWS_LAMBDA = os.getenv("USE_AWS_LAMBDA", "false").lower() == "true"
 USE_AWS_CLOUDWATCH = os.getenv("USE_AWS_CLOUDWATCH", "false").lower() == "true"
+AWS_LAMBDA_FUNCTION_NAME = os.getenv("AWS_LAMBDA_FUNCTION_NAME", "ichimoku-data-collector")
 
 # Initialize AWS service only if configured and enabled
 aws_service = None
@@ -72,7 +72,8 @@ def read_root():
         "message": "Ichimoku Cloud API is running",
         "aws_s3_enabled": aws_service is not None,
         "aws_lambda_enabled": USE_AWS_LAMBDA,
-        "aws_cloudwatch_enabled": USE_AWS_CLOUDWATCH
+        "aws_cloudwatch_enabled": USE_AWS_CLOUDWATCH,
+        "version": "1.2.0"
     }
 
 @app.get("/aws/status")
@@ -84,6 +85,7 @@ async def get_aws_status():
         "s3_connected": aws_service is not None,
         "bucket_name": AWS_BUCKET_NAME if aws_service else None,
         "lambda_enabled": USE_AWS_LAMBDA,
+        "lambda_function_name": AWS_LAMBDA_FUNCTION_NAME if USE_AWS_LAMBDA else None,
         "cloudwatch_enabled": USE_AWS_CLOUDWATCH
     }
 
@@ -95,6 +97,94 @@ async def list_s3_data():
     
     files = aws_service.list_available_data()
     return {"status": "success", "files": files}
+
+# LAMBDA ENDPOINTS
+
+@app.get("/aws/tickers")
+async def list_available_tickers():
+    """List available tickers in S3"""
+    if not aws_service:
+        raise HTTPException(status_code=503, detail="AWS S3 not available")
+    
+    tickers = aws_service.get_available_tickers()
+    return {
+        "status": "success",
+        "tickers": tickers,
+        "count": len(tickers)
+    }
+
+@app.post("/aws/collect/{ticker}")
+async def collect_ticker_data(ticker: str):
+    """Trigger Lambda function to collect data for a ticker"""
+    if not aws_service:
+        raise HTTPException(status_code=503, detail="AWS S3 not available")
+    
+    if not USE_AWS_LAMBDA:
+        raise HTTPException(status_code=503, detail="AWS Lambda not enabled")
+    
+    if not AWS_LAMBDA_FUNCTION_NAME:
+        raise HTTPException(status_code=503, detail="Lambda function name not configured")
+    
+    ticker = ticker.upper().strip()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Valid ticker symbol is required")
+    
+    # Check if data already exists
+    data_exists = aws_service.check_ticker_data_exists(ticker)
+    
+    try:
+        logger.info(f"Triggering data collection for {ticker} (exists: {data_exists})")
+        result = aws_service.trigger_lambda_data_collection(ticker, AWS_LAMBDA_FUNCTION_NAME)
+        
+        if result["success"]:
+            status_message = f"Successfully collected data for {ticker}"
+            if data_exists:
+                status_message += " (updated existing data)"
+            
+            return {
+                "status": "success",
+                "message": status_message,
+                "ticker": result["ticker"],
+                "rows_processed": result.get("rows_processed", 0),
+                "csv_key": result.get("csv_key", ""),
+                "data_existed": data_exists,
+                "timestamp": result.get("timestamp", "")
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result["error"])
+            
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error in collect_ticker_data: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/aws/lambda/status")
+async def get_lambda_status():
+    """Check Lambda service status"""
+    return {
+        "lambda_enabled": USE_AWS_LAMBDA,
+        "function_name": AWS_LAMBDA_FUNCTION_NAME if USE_AWS_LAMBDA else None,
+        "s3_available": aws_service is not None,
+        "aws_available": AWS_AVAILABLE
+    }
+
+@app.get("/aws/ticker/{ticker}/exists")
+async def check_ticker_exists(ticker: str):
+    """Check if data for a ticker exists in S3"""
+    if not aws_service:
+        raise HTTPException(status_code=503, detail="AWS S3 not available")
+    
+    ticker = ticker.upper().strip()
+    exists = aws_service.check_ticker_data_exists(ticker)
+    
+    return {
+        "status": "success",
+        "ticker": ticker,
+        "exists": exists
+    }
+
+# EXISTING DATA ENDPOINTS (enhanced)
 
 @app.get("/data/{ticker_name}")
 async def get_data(
@@ -111,17 +201,7 @@ async def get_data(
     2. S3 CSV files (if use_s3=true) 
     3. Local CSV backup (if use_csv=true and ticker=AAPL)
     4. Yahoo Finance API (with optional S3 caching)
-    
-    Example usage:
-    - /data/AAPL - Yahoo Finance with S3 caching
-    - /data/AAPL?use_s3=true - Try S3 first, fallback to Yahoo Finance  
-    - /data/AAPL?use_csv=true - Use local CSV backup
-    - /data/MSFT?use_s3=true&use_cache=false - S3 CSV only, no cache
-
-    Example:
-    [{'time': '2024-01-02', 'open': 185.78945295661444, 'high': 187.07008341179338, 'low': 182.55315792151214, 'close': 184.29043579101562, 'volume': 82488700}, {'time': '2024-01-03', 'open': 182.88075702582086, 'high': 184.52869277861944, 'low': 182.09649169200898, 'close': 182.91053771972656, 'volume': 58414500}, {'time': '2024-01-04', 'open': 180.82578520690032, 'high': 181.7589539428833, 'low': 179.5650288616003, 'close': 180.58753967285156, 'volume': 71983600}, {'time': '2024-01-05', 'open': 180.66696287937032, 'high': 181.43135417752765, 'low': 178.86018676112266, 'close': 179.8628387451172, 'volume': 62303300}, {'time': '2024-01-08', 'open': 180.76622380895435, 'high': 184.2507162227342, 'low': 180.18051667398524, 'close': 184.21099853515625, 'volume': 59144500}]
     """
-
 
     ticker_name = ticker_name.upper()
     logger.info(f"Fetching data for {ticker_name} (use_s3={use_s3}, use_csv={use_csv}, use_cache={use_cache})")
@@ -195,8 +275,13 @@ async def get_data(
         error_msg = f"Error fetching data for {ticker_name}"
         suggestions = []
         
-        if aws_service and ticker_name != "AAPL":
-            suggestions.append("try uploading CSV data to S3")
+        if aws_service:
+            # Check if we have this ticker in S3
+            if aws_service.check_ticker_data_exists(ticker_name):
+                suggestions.append("try using 'Use AWS S3 Data' option")
+            else:
+                suggestions.append("try collecting data using Lambda first")
+        
         if ticker_name != "AAPL":
             suggestions.append("try using AAPL ticker")
         if not aws_service:
@@ -230,10 +315,6 @@ async def get_ichimoku(req: IchimokuRequest) -> Dict[str, Any]:
     - Cloud color based on span relationship
     
     The calculation logic is identical to the original implementation.
-
-    Example:
-    [{'time': '2024-01-02', 'open': 185.78945295661444, 'high': 187.07008341179338, 'low': 182.55315792151214, 'close': 184.29043579101562, 'volume': 82488700.0, 'tenkan_sen': nan, 'kijun_sen': nan, 'chikou_span': 186.95095825195312, 'senkou_span_a': nan, 'senkou_span_b': nan, 'cloud_color': 'rgba(255,182,193,0.3)'}, {'time': '2024-01-03', 'open': 182.88075702582086, 'high': 184.52869277861944, 'low': 182.09649169200898, 'close': 182.91053771972656, 'volume': 58414500.0, 'tenkan_sen': nan, 'kijun_sen': nan, 'chikou_span': 187.71632385253906, 'senkou_span_a': nan, 'senkou_span_b': nan, 'cloud_color': 'rgba(255,182,193,0.3)'}, {'time': '2024-01-04', 'open': 180.82578520690032, 'high': 181.7589539428833, 'low': 179.5650288616003, 'close': 180.58753967285156, 'volume': 71983600.0, 'tenkan_sen': nan, 'kijun_sen': nan, 'chikou_span': 186.02650451660156, 'senkou_span_a': nan, 'senkou_span_b': nan, 'cloud_color': 'rgba(255,182,193,0.3)'}, {'time': '2024-01-05', 'open': 180.66696287937032, 'high': 181.43135417752765, 'low': 178.86018676112266, 'close': 179.8628387451172, 'volume': 62303300.0, 'tenkan_sen': nan, 'kijun_sen': nan, 'chikou_span': 183.92918395996094, 'senkou_span_a': nan, 'senkou_span_b': nan, 'cloud_color': 'rgba(255,182,193,0.3)'}, {'time': '2024-01-08', 'open': 180.76622380895435, 'high': 184.2507162227342, 'low': 180.18051667398524, 'close': 184.21099853515625, 'volume': 59144500.0, 'tenkan_sen': nan, 'kijun_sen': nan, 'chikou_span': 183.0445098876953, 'senkou_span_a': nan, 'senkou_span_b': nan, 'cloud_color': 'rgba(255,182,193,0.3)'}]
-
     """
     try:
         logger.info(f"Calculating Ichimoku for {len(req.data)} data points")
@@ -281,7 +362,7 @@ async def health_check():
     """Detailed health check including AWS status"""
     health_status = {
         "status": "healthy",
-        "api_version": "1.0.0",
+        "api_version": "1.2.0",
         "services": {
             "yahoo_finance": "available",
             "ichimoku_calculation": "available",
@@ -295,16 +376,12 @@ async def health_check():
     if aws_service:
         try:
             files = aws_service.list_available_data()
-            health_status["services"]["aws_s3"] = f"connected ({len(files)} files)"
+            tickers = aws_service.get_available_tickers()
+            health_status["services"]["aws_s3"] = f"connected ({len(files)} files, {len(tickers)} tickers)"
         except Exception:
             health_status["services"]["aws_s3"] = "connection_error"
     
     return health_status
-
-# Optional: Keep the old endpoint commented for reference
-# @app.get("/ichimoku/{ticker_name}")  
-# This endpoint was replaced by the two-step process: /data/{ticker} + POST /ichimoku
-# This provides more flexibility and follows REST conventions better
 
 if __name__ == "__main__":
     import uvicorn
