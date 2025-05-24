@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import pandas as pd
@@ -6,6 +6,9 @@ from typing import Dict, List, Any
 import logging
 import os
 from pydantic import BaseModel
+from datetime import datetime, timedelta
+import re
+import time
 
 from app.data_fetch import fetch_ticker_data
 from app.ichimoku import apply_ichimoku_cloud
@@ -29,7 +32,7 @@ logger = logging.getLogger("ichimoku-backend")
 app = FastAPI(
     title="Ichimoku Cloud API", 
     description="Backend API for Ichimoku Cloud Chart Application with AWS S3 and Lambda Integration",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 # Add CORS middleware to allow frontend requests
@@ -40,6 +43,54 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# SECURITY: Rate limiting storage (in production, use Redis or database)
+rate_limit_storage = {}
+
+def is_rate_limited(client_ip: str, endpoint: str) -> bool:
+    """
+    SECURITY: Rate limiting - max 5 requests per minute per IP per endpoint
+    """
+    key = f"{client_ip}:{endpoint}"
+    now = datetime.now()
+    
+    if key not in rate_limit_storage:
+        rate_limit_storage[key] = []
+    
+    # Clean old requests (older than 1 minute)
+    rate_limit_storage[key] = [
+        req_time for req_time in rate_limit_storage[key] 
+        if now - req_time < timedelta(minutes=1)
+    ]
+    
+    # Check if under limit
+    if len(rate_limit_storage[key]) >= 5:
+        return True
+    
+    # Record this request
+    rate_limit_storage[key].append(now)
+    return False
+
+def validate_ticker_input(ticker: str) -> tuple[bool, str]:
+    """
+    SECURITY: Validate ticker input on backend
+    """
+    if not ticker or not isinstance(ticker, str):
+        return False, "Ticker must be a non-empty string"
+    
+    ticker = ticker.upper().strip()
+    
+    if len(ticker) < 1 or len(ticker) > 5:
+        return False, "Ticker must be 1-5 characters long"
+    
+    if not re.match(r'^[A-Z0-9]+$', ticker):
+        return False, "Ticker must contain only letters and numbers"
+    
+    blacklist = ['TEST', 'SPAM', 'HACK', 'NULL', 'ADMIN', 'DELETE', 'DROP', 'EXEC']
+    if ticker in blacklist:
+        return False, f"Ticker '{ticker}' is not allowed"
+    
+    return True, ticker
 
 # AWS Configuration
 AWS_BUCKET_NAME = os.getenv("AWS_BUCKET_NAME", "")
@@ -73,7 +124,8 @@ def read_root():
         "aws_s3_enabled": aws_service is not None,
         "aws_lambda_enabled": USE_AWS_LAMBDA,
         "aws_cloudwatch_enabled": USE_AWS_CLOUDWATCH,
-        "version": "1.2.0"
+        "version": "1.3.0",
+        "security": "enhanced"
     }
 
 @app.get("/aws/status")
@@ -98,7 +150,7 @@ async def list_s3_data():
     files = aws_service.list_available_data()
     return {"status": "success", "files": files}
 
-# LAMBDA ENDPOINTS
+# LAMBDA ENDPOINTS (SECURED)
 
 @app.get("/aws/tickers")
 async def list_available_tickers():
@@ -114,8 +166,21 @@ async def list_available_tickers():
     }
 
 @app.post("/aws/collect/{ticker}")
-async def collect_ticker_data(ticker: str):
-    """Trigger Lambda function to collect data for a ticker"""
+async def collect_ticker_data(ticker: str, request: Request):
+    """
+    Trigger Lambda function to collect data for a ticker - SECURED
+    """
+    # SECURITY: Get client IP for rate limiting
+    client_ip = request.client.host
+    
+    # SECURITY: Rate limiting check
+    if is_rate_limited(client_ip, "collect"):
+        logger.warning(f"Rate limit exceeded for IP {client_ip}")
+        raise HTTPException(
+            status_code=429, 
+            detail="Rate limit exceeded. Please wait before making another request."
+        )
+    
     if not aws_service:
         raise HTTPException(status_code=503, detail="AWS S3 not available")
     
@@ -125,16 +190,26 @@ async def collect_ticker_data(ticker: str):
     if not AWS_LAMBDA_FUNCTION_NAME:
         raise HTTPException(status_code=503, detail="Lambda function name not configured")
     
-    ticker = ticker.upper().strip()
-    if not ticker:
-        raise HTTPException(status_code=400, detail="Valid ticker symbol is required")
+    # SECURITY: Validate ticker input
+    is_valid, result = validate_ticker_input(ticker)
+    if not is_valid:
+        logger.warning(f"Invalid ticker from IP {client_ip}: {result}")
+        raise HTTPException(status_code=400, detail=result)
+    
+    ticker = result  # Use validated ticker
     
     # Check if data already exists
     data_exists = aws_service.check_ticker_data_exists(ticker)
     
     try:
-        logger.info(f"Triggering data collection for {ticker} (exists: {data_exists})")
-        result = aws_service.trigger_lambda_data_collection(ticker, AWS_LAMBDA_FUNCTION_NAME)
+        logger.info(f"Triggering data collection for {ticker} from IP {client_ip} (exists: {data_exists})")
+        
+        # SECURITY: Pass source validation parameter
+        result = aws_service.trigger_lambda_data_collection(
+            ticker, 
+            AWS_LAMBDA_FUNCTION_NAME,
+            source="ichimoku-app"  # Add source parameter
+        )
         
         if result["success"]:
             status_message = f"Successfully collected data for {ticker}"
@@ -156,8 +231,8 @@ async def collect_ticker_data(ticker: str):
     except HTTPException:
         raise  # Re-raise HTTP exceptions
     except Exception as e:
-        logger.error(f"Error in collect_ticker_data: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logger.error(f"Error in collect_ticker_data for {ticker} from IP {client_ip}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/aws/lambda/status")
 async def get_lambda_status():
@@ -170,25 +245,38 @@ async def get_lambda_status():
     }
 
 @app.get("/aws/ticker/{ticker}/exists")
-async def check_ticker_exists(ticker: str):
+async def check_ticker_exists(ticker: str, request: Request):
     """Check if data for a ticker exists in S3"""
+    # SECURITY: Rate limiting for data access
+    client_ip = request.client.host
+    if is_rate_limited(client_ip, "check"):
+        raise HTTPException(
+            status_code=429, 
+            detail="Rate limit exceeded. Please wait before making another request."
+        )
+    
     if not aws_service:
         raise HTTPException(status_code=503, detail="AWS S3 not available")
     
-    ticker = ticker.upper().strip()
-    exists = aws_service.check_ticker_data_exists(ticker)
+    # SECURITY: Validate ticker input
+    is_valid, validated_ticker = validate_ticker_input(ticker)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=validated_ticker)
+    
+    exists = aws_service.check_ticker_data_exists(validated_ticker)
     
     return {
         "status": "success",
-        "ticker": ticker,
+        "ticker": validated_ticker,
         "exists": exists
     }
 
-# EXISTING DATA ENDPOINTS (enhanced)
+# EXISTING DATA ENDPOINTS (enhanced with security)
 
 @app.get("/data/{ticker_name}")
 async def get_data(
-    ticker_name: str, 
+    ticker_name: str,
+    request: Request,
     use_csv: bool = Query(False, description="Use local CSV backup data"),
     use_s3: bool = Query(False, description="Use AWS S3 data"),
     use_cache: bool = Query(True, description="Use S3 cache if available")
@@ -202,9 +290,23 @@ async def get_data(
     3. Local CSV backup (if use_csv=true and ticker=AAPL)
     4. Yahoo Finance API (with optional S3 caching)
     """
+    
+    # SECURITY: Rate limiting for data access
+    client_ip = request.client.host
+    if is_rate_limited(client_ip, "data"):
+        raise HTTPException(
+            status_code=429, 
+            detail="Rate limit exceeded. Please wait before making another request."
+        )
 
-    ticker_name = ticker_name.upper()
-    logger.info(f"Fetching data for {ticker_name} (use_s3={use_s3}, use_csv={use_csv}, use_cache={use_cache})")
+    # SECURITY: Validate ticker input
+    is_valid, validated_ticker = validate_ticker_input(ticker_name)
+    if not is_valid:
+        logger.warning(f"Invalid ticker from IP {client_ip}: {validated_ticker}")
+        raise HTTPException(status_code=400, detail=validated_ticker)
+    
+    ticker_name = validated_ticker
+    logger.info(f"Fetching data for {ticker_name} from IP {client_ip} (use_s3={use_s3}, use_csv={use_csv}, use_cache={use_cache})")
     
     # Try S3 cache first (if enabled and requested)
     if use_s3 and use_cache and aws_service:
@@ -302,7 +404,7 @@ class IchimokuRequest(BaseModel):
     cloud_shift: int = 26
 
 @app.post("/ichimoku")
-async def get_ichimoku(req: IchimokuRequest) -> Dict[str, Any]:
+async def get_ichimoku(req: IchimokuRequest, request: Request) -> Dict[str, Any]:
     """
     Apply Ichimoku Cloud calculations with the given parameters.
     
@@ -316,8 +418,24 @@ async def get_ichimoku(req: IchimokuRequest) -> Dict[str, Any]:
     
     The calculation logic is identical to the original implementation.
     """
+    
+    # SECURITY: Rate limiting for calculations
+    client_ip = request.client.host
+    if is_rate_limited(client_ip, "ichimoku"):
+        raise HTTPException(
+            status_code=429, 
+            detail="Rate limit exceeded. Please wait before making another request."
+        )
+    
     try:
-        logger.info(f"Calculating Ichimoku for {len(req.data)} data points")
+        logger.info(f"Calculating Ichimoku for {len(req.data)} data points from IP {client_ip}")
+        
+        # SECURITY: Validate data size to prevent abuse
+        if len(req.data) > 5000:  # Limit to 5000 data points
+            raise HTTPException(
+                status_code=413, 
+                detail="Data too large. Maximum 5000 data points allowed."
+            )
         
         # Convert request data to DataFrame
         df = pd.DataFrame(req.data)
@@ -351,9 +469,11 @@ async def get_ichimoku(req: IchimokuRequest) -> Dict[str, Any]:
             "count": len(result_data)
         }
         
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
     except Exception as e:
         logger.error(f"Error computing Ichimoku: {e}")
-        raise HTTPException(status_code=500, detail=f"Error computing Ichimoku: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error computing Ichimoku indicators")
 
 
 # Health check endpoint with more detailed info
@@ -362,13 +482,16 @@ async def health_check():
     """Detailed health check including AWS status"""
     health_status = {
         "status": "healthy",
-        "api_version": "1.2.0",
+        "api_version": "1.3.0",
+        "security_version": "enhanced",
         "services": {
             "yahoo_finance": "available",
             "ichimoku_calculation": "available",
             "aws_s3": "available" if aws_service else "disabled",
             "aws_lambda": "enabled" if USE_AWS_LAMBDA else "disabled", 
-            "aws_cloudwatch": "enabled" if USE_AWS_CLOUDWATCH else "disabled"
+            "aws_cloudwatch": "enabled" if USE_AWS_CLOUDWATCH else "disabled",
+            "rate_limiting": "enabled",
+            "input_validation": "enabled"
         }
     }
     

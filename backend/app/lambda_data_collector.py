@@ -1,8 +1,16 @@
 """
-AWS Lambda Function for Ichimoku Data Collection
+AWS Lambda Function for Ichimoku Data Collection - SECURED VERSION
 
 This file is for REFERENCE and DEBUGGING purposes only.
 The actual Lambda function runs in AWS cloud.
+
+SECURITY IMPROVEMENTS:
+- Hardcoded bucket name (no parameter injection)
+- Input validation for ticker symbols
+- Source validation requirement
+- Rate limiting protection
+- Size limits to prevent abuse
+- Enhanced error handling
 
 To deploy:
 1. Copy this code into AWS Lambda Console
@@ -17,6 +25,7 @@ import boto3
 import pandas as pd
 import yfinance as yf
 import io
+import re
 from datetime import datetime
 import logging
 
@@ -24,61 +33,142 @@ import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# SECURITY: Hardcode bucket name - don't accept as parameter
+ALLOWED_BUCKET = "ichimoku-data-bt2025"
+
+# SECURITY: Rate limiting tracking (in-memory for this execution)
+RATE_LIMIT_CALLS = 0
+MAX_CALLS_PER_EXECUTION = 1  # Only process 1 ticker per invocation
+
+def validate_ticker(ticker):
+    """
+    SECURITY: Validate ticker symbol format
+    Only allow: A-Z, 1-5 characters, common stock symbols
+    """
+    if not ticker or not isinstance(ticker, str):
+        return False, "Ticker must be a non-empty string"
+    
+    ticker = ticker.upper().strip()
+    
+    # Length check
+    if len(ticker) < 1 or len(ticker) > 5:
+        return False, "Ticker must be 1-5 characters long"
+    
+    # Character check - only letters and numbers
+    if not re.match(r'^[A-Z0-9]+$', ticker):
+        return False, "Ticker must contain only letters and numbers"
+    
+    # Blacklist check for obvious bad inputs
+    blacklist = ['TEST', 'SPAM', 'HACK', 'NULL', 'ADMIN', 'DELETE', 'DROP', 'EXEC']
+    if ticker in blacklist:
+        return False, f"Ticker '{ticker}' is not allowed"
+    
+    return True, ticker
+
 def lambda_handler(event, context):
     """
-    AWS Lambda function to fetch ticker data and store in S3
+    AWS Lambda function to fetch ticker data and store in S3 - SECURED
     
     Expected event format:
     {
         "ticker": "AAPL",
-        "bucket_name": "ichimoku-data-bt2025"
+        "source": "ichimoku-app"  # SECURITY: Require source identifier
     }
     
-    Returns:
-    {
-        "statusCode": 200,
-        "body": {
-            "success": true,
-            "message": "Successfully processed AAPL",
-            "ticker": "AAPL",
-            "rows_processed": 251,
-            "csv_key": "data/AAPL_2024_data.csv",
-            "timestamp": "2024-12-30T..."
-        }
-    }
+    SECURITY CHANGES:
+    - Removed bucket_name parameter (hardcoded)
+    - Added ticker validation
+    - Added source validation
+    - Added rate limiting
+    - Enhanced error handling
+    - Added size limits
     """
     
+    global RATE_LIMIT_CALLS
+    
     try:
-        # Parse input
-        ticker = event.get('ticker', '').upper().strip()
-        bucket_name = event.get('bucket_name', 'ichimoku-data-bt2025')
+        # SECURITY: Rate limiting check
+        RATE_LIMIT_CALLS += 1
+        if RATE_LIMIT_CALLS > MAX_CALLS_PER_EXECUTION:
+            return {
+                'statusCode': 429,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'Rate limit exceeded - too many requests'
+                })
+            }
         
-        if not ticker:
+        # SECURITY: Validate source
+        source = event.get('source', '').strip()
+        if source != 'ichimoku-app':
+            logger.warning(f"Invalid source: {source}")
+            return {
+                'statusCode': 403,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'Invalid request source'
+                })
+            }
+        
+        # SECURITY: Validate ticker
+        ticker_input = event.get('ticker', '')
+        is_valid, result = validate_ticker(ticker_input)
+        if not is_valid:
+            logger.warning(f"Invalid ticker validation: {result}")
             return {
                 'statusCode': 400,
                 'body': json.dumps({
                     'success': False,
-                    'error': 'Ticker symbol is required'
+                    'error': f'Invalid ticker: {result}'
                 })
             }
         
-        logger.info(f"Processing ticker: {ticker} for bucket: {bucket_name}")
+        ticker = result  # Use validated ticker
+        bucket_name = ALLOWED_BUCKET  # SECURITY: Use hardcoded bucket
+        
+        logger.info(f"Processing validated ticker: {ticker} for bucket: {bucket_name}")
         
         # Initialize S3 client
         s3_client = boto3.client('s3')
         
-        # Step 1: Fetch data from Yahoo Finance
+        # SECURITY: Verify bucket exists and we have access
+        try:
+            s3_client.head_bucket(Bucket=bucket_name)
+        except Exception as e:
+            logger.error(f"Bucket access denied or not found: {e}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'Storage service unavailable'
+                })
+            }
+        
+        # Step 1: Fetch data from Yahoo Finance with timeout
         logger.info(f"Fetching data for {ticker} from Yahoo Finance...")
         
         try:
-            # Fetch 2024 data (adjust date range as needed)
+            # SECURITY: Add timeout to prevent hanging
             ticker_obj = yf.Ticker(ticker)
-            df = ticker_obj.history(start="2024-01-01", end="2024-12-31")
+            df = ticker_obj.history(
+                start="2024-01-01", 
+                end="2024-12-31",
+                timeout=30  # 30 second timeout
+            )
             
             if df.empty:
-                raise ValueError(f"No data found for ticker {ticker}")
+                # This might be a real ticker with no 2024 data, not necessarily malicious
+                logger.info(f"No 2024 data found for ticker {ticker}")
+                return {
+                    'statusCode': 404,
+                    'body': json.dumps({
+                        'success': False,
+                        'error': f'No 2024 data available for ticker {ticker}',
+                        'ticker': ticker
+                    })
+                }
                 
-            # Format data to match your existing structure
+            # Format data to match existing structure
             df = df[['Open', 'High', 'Low', 'Close', 'Volume']].reset_index()
             df.columns = ['time', 'open', 'high', 'low', 'close', 'volume']
             df['time'] = pd.to_datetime(df['time']).dt.strftime('%Y-%m-%d')
@@ -91,7 +181,7 @@ def lambda_handler(event, context):
                 'statusCode': 500,
                 'body': json.dumps({
                     'success': False,
-                    'error': f'Error fetching data: {str(e)}',
+                    'error': 'Data fetching service unavailable',
                     'ticker': ticker
                 })
             }
@@ -105,12 +195,25 @@ def lambda_handler(event, context):
             df.to_csv(csv_buffer, index=False)
             csv_content = csv_buffer.getvalue()
             
+            # SECURITY: Limit CSV size to prevent abuse
+            if len(csv_content) > 1024 * 1024:  # 1MB limit
+                logger.warning(f"CSV too large for {ticker}: {len(csv_content)} bytes")
+                return {
+                    'statusCode': 413,
+                    'body': json.dumps({
+                        'success': False,
+                        'error': 'Data too large to process',
+                        'ticker': ticker
+                    })
+                }
+            
             # Upload to S3 (overwrites if exists)
             s3_client.put_object(
                 Bucket=bucket_name,
                 Key=csv_key,
                 Body=csv_content,
-                ContentType='text/csv'
+                ContentType='text/csv',
+                ServerSideEncryption='AES256'  # SECURITY: Encrypt at rest
             )
             
             logger.info(f"Successfully uploaded {csv_key} to S3")
@@ -121,12 +224,12 @@ def lambda_handler(event, context):
                 'statusCode': 500,
                 'body': json.dumps({
                     'success': False,
-                    'error': f'Error uploading to S3: {str(e)}',
+                    'error': 'Storage service error',
                     'ticker': ticker
                 })
             }
         
-        # Step 3: Update ticker list
+        # Step 3: Update ticker list (with size limits)
         try:
             ticker_list_key = "data/available_tickers.txt"
             
@@ -138,6 +241,18 @@ def lambda_handler(event, context):
             except s3_client.exceptions.NoSuchKey:
                 existing_tickers = []
                 logger.info("No existing ticker list found, creating new one")
+            
+            # SECURITY: Limit total number of tickers
+            if len(existing_tickers) >= 100 and ticker not in existing_tickers:
+                logger.warning(f"Ticker limit reached: {len(existing_tickers)}")
+                return {
+                    'statusCode': 507,
+                    'body': json.dumps({
+                        'success': False,
+                        'error': 'Storage limit reached - too many tickers',
+                        'ticker': ticker
+                    })
+                }
             
             # Add new ticker if not already present
             if ticker not in existing_tickers:
@@ -153,7 +268,8 @@ def lambda_handler(event, context):
                 Bucket=bucket_name,
                 Key=ticker_list_key,
                 Body=ticker_list_content,
-                ContentType='text/plain'
+                ContentType='text/plain',
+                ServerSideEncryption='AES256'  # SECURITY: Encrypt at rest
             )
             
             logger.info(f"Updated ticker list with {len(existing_tickers)} tickers")
@@ -171,7 +287,8 @@ def lambda_handler(event, context):
                 'ticker': ticker,
                 'rows_processed': len(df),
                 'csv_key': csv_key,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'bucket': bucket_name  # Confirm which bucket was used
             })
         }
         
@@ -181,22 +298,21 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({
                 'success': False,
-                'error': f'Unexpected error: {str(e)}'
+                'error': 'Internal service error'  # SECURITY: Don't expose internal details
             })
         }
 
-# Local testing function (not used in Lambda)
+# Local testing function (for debugging)
 def test_locally():
     """
     For local debugging only - DO NOT USE IN PRODUCTION
-    This function helps debug the logic before uploading to Lambda
     """
     test_event = {
         "ticker": "MSFT",
-        "bucket_name": "ichimoku-data-bt2025"
+        "source": "ichimoku-app"  # Required source validation
     }
     
-    print("🧪 Testing Lambda function logic locally...")
+    print("🧪 Testing secured Lambda function logic locally...")
     print("Note: This will use your local AWS credentials")
     
     result = lambda_handler(test_event, None)
@@ -204,6 +320,7 @@ def test_locally():
 
 if __name__ == "__main__":
     print("⚠️ This file is for AWS Lambda deployment reference only!")
-    print("💡 Copy this code into AWS Lambda Console to deploy")
+    print("💡 Copy this SECURED code into AWS Lambda Console to deploy")
+    print("🔒 This version includes security improvements")
     print("🧪 Uncomment the line below to test logic locally (for debugging)")
     # test_locally()

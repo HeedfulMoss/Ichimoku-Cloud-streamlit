@@ -291,7 +291,7 @@ class AWSDataService:
             logger.error(f"Force cache cleanup failed: {e}")
             return False
 
-    # NEW LAMBDA INTEGRATION METHODS
+    # LAMBDA INTEGRATION METHODS (SECURED)
 
     def get_available_tickers(self):
         """Get list of available tickers from S3"""
@@ -314,8 +314,15 @@ class AWSDataService:
             logger.error(f"Error fetching ticker list: {e}")
             return []
 
-    def trigger_lambda_data_collection(self, ticker, lambda_function_name):
-        """Trigger Lambda function to collect data for a ticker"""
+    def trigger_lambda_data_collection(self, ticker, lambda_function_name, source="ichimoku-app"):
+        """
+        Trigger Lambda function to collect data for a ticker - SECURED
+        
+        SECURITY IMPROVEMENTS:
+        - Added source parameter for validation
+        - Enhanced error handling
+        - Better logging for security monitoring
+        """
         if not self.is_available():
             return {"success": False, "error": "S3 not available"}
         
@@ -323,12 +330,14 @@ class AWSDataService:
             # Create Lambda client (will use same AWS credentials as S3)
             lambda_client = boto3.client('lambda')
             
+            # SECURITY: Include source validation and remove bucket parameter
             payload = {
                 "ticker": ticker.upper(),
-                "bucket_name": self.bucket_name
+                "source": source  # Add source parameter for validation
+                # SECURITY: Bucket name is now hardcoded in Lambda function
             }
             
-            logger.info(f"Triggering Lambda function {lambda_function_name} for {ticker}")
+            logger.info(f"Triggering Lambda function {lambda_function_name} for {ticker} with source: {source}")
             
             response = lambda_client.invoke(
                 FunctionName=lambda_function_name,
@@ -348,22 +357,40 @@ class AWSDataService:
                     "ticker": ticker,
                     "rows_processed": body.get('rows_processed', 0),
                     "csv_key": body.get('csv_key', ''),
-                    "timestamp": body.get('timestamp', '')
+                    "timestamp": body.get('timestamp', ''),
+                    "bucket": body.get('bucket', 'unknown')  # Confirm bucket used
                 }
             else:
                 error_body = json.loads(response_payload.get('body', '{}'))
-                logger.error(f"Lambda execution failed for {ticker}: {error_body.get('error')}")
+                error_message = error_body.get('error', 'Lambda execution failed')
+                logger.error(f"Lambda execution failed for {ticker}: {error_message}")
+                
+                # SECURITY: Log failed attempts for monitoring
+                logger.warning(f"Lambda failure for {ticker} - Status: {response_payload.get('statusCode')} - Error: {error_message}")
+                
                 return {
                     "success": False,
-                    "error": error_body.get('error', 'Lambda execution failed'),
-                    "ticker": ticker
+                    "error": error_message,
+                    "ticker": ticker,
+                    "status_code": response_payload.get('statusCode')
                 }
                 
         except Exception as e:
             logger.error(f"Error triggering Lambda for {ticker}: {e}")
+            
+            # SECURITY: Enhanced error handling without exposing internal details
+            if "AccessDenied" in str(e):
+                error_msg = "Lambda access denied - check IAM permissions"
+            elif "ResourceNotFound" in str(e):
+                error_msg = "Lambda function not found - check function name"
+            elif "TooManyRequests" in str(e):
+                error_msg = "Lambda rate limit exceeded - please wait"
+            else:
+                error_msg = "Lambda service temporarily unavailable"
+            
             return {
                 "success": False,
-                "error": f"Failed to trigger data collection: {str(e)}",
+                "error": error_msg,
                 "ticker": ticker
             }
 
@@ -374,10 +401,64 @@ class AWSDataService:
         
         try:
             key = f"data/{ticker}_2024_data.csv"
-            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
-            return True
-        except self.s3_client.exceptions.NoSuchKey:
-            return False
+            # Use list_objects_v2 instead of head_object since we removed s3:HeadObject permission
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix=key,
+                MaxKeys=1
+            )
+            return 'Contents' in response and len(response['Contents']) > 0
         except Exception as e:
             logger.error(f"Error checking if {ticker} data exists: {e}")
             return False
+
+    # SECURITY MONITORING METHODS
+
+    def log_access_attempt(self, ticker, source_ip, success=True):
+        """Log access attempts for security monitoring"""
+        try:
+            log_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'ticker': ticker,
+                'source_ip': source_ip,
+                'success': success,
+                'action': 'data_access'
+            }
+            
+            # In production, this could be sent to CloudWatch Logs
+            logger.info(f"Access attempt logged: {json.dumps(log_entry)}")
+            
+        except Exception as e:
+            logger.debug(f"Failed to log access attempt: {e}")
+
+    def get_security_metrics(self):
+        """Get security-related metrics for monitoring"""
+        if not self.is_available():
+            return {'available': False}
+        
+        try:
+            # Count total data files
+            data_response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix='data/'
+            )
+            data_files = len(data_response.get('Contents', []))
+            
+            # Count cache files
+            cache_response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix='cache/'
+            )
+            cache_files = len(cache_response.get('Contents', []))
+            
+            return {
+                'available': True,
+                'data_files': data_files,
+                'cache_files': cache_files,
+                'bucket_name': self.bucket_name,
+                'last_check': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting security metrics: {e}")
+            return {'available': False, 'error': str(e)}
