@@ -1,8 +1,8 @@
 # Ichimoku Cloud Application
 
-A microservice-based application for visualizing Ichimoku Cloud technical indicators for stock tickers with multiple frontend options.
+A **security-hardened** microservice application for visualizing Ichimoku Cloud technical indicators with AWS Lambda data collection, S3 storage, and enterprise-grade security features.
 
-## Project Architecture
+## 🏗️ Project Architecture
 
 ```
 Ichimoku-Cloud-Application/
@@ -10,182 +10,245 @@ Ichimoku-Cloud-Application/
 ├── docker-compose.yml          # Docker Compose configuration
 ├── .dockerignore               # Files to ignore in Docker builds
 ├── .gitignore                  # Files to ignore in Git
-├── Makefile                    # Automation commands (optional)
+├── k8s_setup_script.sh         # Automated Kubernetes deployment
+├── k8s_cleanup_script.sh       # Automated cleanup script
+├── .env                        # Environment variables (AWS credentials)
 ├── streamlit-frontend/         # Streamlit frontend service
 │   ├── Dockerfile              # Streamlit Docker configuration
 │   ├── requirements.txt        # Streamlit dependencies
 │   ├── app/                    # Streamlit application code
 │   │   ├── __init__.py         # Package initialization
-│   │   ├── Homepage.py         # Main Streamlit page
+│   │   ├── Homepage.py         # Main Streamlit page (with Lambda UI)
 │   │   ├── charts.py           # Chart rendering logic
 │   └── k8s/                    # Kubernetes manifests for Streamlit
 │       ├── streamlit-deployment.yaml
 │       └── streamlit-service.yaml
 ├── react-frontend/             # React/HTML frontend service
 │   ├── Dockerfile              # React frontend Docker configuration
-│   ├── index.html              # React/HTML application
+│   ├── index.html              # React/HTML application (with Lambda UI)
 │   └── k8s/                    # Kubernetes manifests for React
 │       ├── react-deployment.yaml
 │       └── react-service.yaml
 └── backend/                    # FastAPI backend service
     ├── Dockerfile              # Backend Docker configuration
-    ├── requirements.txt        # Backend dependencies
+    ├── requirements.txt        # Backend dependencies (with AWS)
     ├── app/                    # Backend application code
-    │   ├── main.py             # FastAPI entrypoint
+    │   ├── main.py             # FastAPI entrypoint (with Lambda + security)
     │   ├── data_fetch.py       # Data fetching service
+    │   ├── lambda_data_collector.py # 🔒 Secured Lambda function reference
+    │   ├── aws_data_service.py # 🔒 AWS service integration (secured)
     │   ├── ichimoku.py         # Ichimoku calculation logic
     └── k8s/                    # Kubernetes manifests for backend
-        ├── backend-deployment.yaml
+        ├── backend-deployment.yaml (with AWS secrets)
         └── backend-service.yaml
 ```
 
-## Project Description
+## 🔒 Security Features
 
-This application provides an interactive visualization of Ichimoku Cloud technical indicators for stock tickers. The Ichimoku Cloud is a popular technical analysis tool that helps traders identify trend direction, momentum, and potential support/resistance levels.
+This application includes **enterprise-grade security** improvements:
 
-The project is structured as a microservice application with:
+### **Lambda Security:**
+- Hardcoded bucket names (injection-proof)
+- Rate limiting (5 requests/minute per IP)
+- Input validation (strict ticker format)
+- Source validation (require "ichimoku-app")
+- Size limits (prevent abuse)
+- Enhanced monitoring (security logging)
 
-1. **Streamlit Frontend**: Provides a user interface where users can:
-   - Input stock ticker symbols
-   - Adjust Ichimoku Cloud parameters
-   - View the resulting chart with candlesticks, volume, and Ichimoku Cloud indicators
+### **Backend Security:**
+- Rate limiting on all endpoints
+- Input sanitization and validation
+- Client IP tracking and logging
+- Error message sanitization
+- Enhanced exception handling
 
-2. **Backend (FastAPI)**: Handles data processing:
-   - Fetches historical stock data from Yahoo Finance
-   - Performs Ichimoku Cloud calculations
-   - Provides data to the frontend via REST API
-   - Endpoints: `/data/{ticker}` (GET) and `/ichimoku` (POST)  
+### **AWS Security:**
+- Restricted IAM policies (not S3FullAccess)
+- S3 server-side encryption
+- Source validation for Lambda calls
+- Automated secret management
 
-3. **React Frontend**: JavaScript/HTML-based interface:
-   - Native HTML/CSS interface with interactive controls
-   - Uses lightweight-charts library directly
+## 📖 Project Description
+
+This application provides an interactive visualization of Ichimoku Cloud technical indicators for stock tickers with **secured AWS Lambda data collection** for building custom backtesting datasets. The Ichimoku Cloud is a popular technical analysis tool that helps traders identify trend direction, momentum, and potential support/resistance levels.
+
+### **Frontend Components:**
+1. **Streamlit Frontend**: Python-based user interface with:
+   - Interactive ticker input and parameter controls
+   - **Secured AWS Lambda data collection**
+   - Real-time chart updates with Ichimoku Cloud indicators
+   - Multi-source data options (S3, Local CSV, Yahoo Finance)
+
+2. **React Frontend**: JavaScript/HTML-based interface with:
+   - Native HTML/CSS interface with lightweight-charts library
    - Synchronized dual-pane layout (main chart + volume)
-   - Complete Ichimoku Cloud visualization with proper chart interactions
+   - **Secured AWS Lambda data collection UI**
+   - Complete Ichimoku Cloud visualization
 
-## Project Explanation:
+3. **Backend (FastAPI)**: **Security-hardened** data processing with:
+   - Multi-source data fetching with intelligent fallback
+   - **Rate-limited and validated** API endpoints
+   - **Secured AWS S3 and Lambda integration**
+   - Automatic S3 cache management with cleanup
+   - Security logging and monitoring
 
-- **Frontend**:
-  - `Homepage.py`: Main Streamlit interface that handles user input and displays the chart
-  - `charts.py`: Contains the logic for rendering charts using streamlit_lightweight_charts
+4. **AWS Lambda Function**: **Serverless data collection** with security:
+   - **Input validation and rate limiting**
+   - **Source authentication** (only authorized requests)
+   - **Hardcoded security parameters** (no injection attacks)
+   - **Automatic data storage** in S3 with encryption
+   - **Ultra-low cost** operation (free tier coverage)
 
-- **Backend**:
-  - `main.py`: FastAPI application entry point
-  - `data_fetch.py`: Service to fetch ticker data from Yahoo Finance
-  - `ichimoku.py`: Service that calculates Ichimoku Cloud indicators
+## 🌩️ Data Sources
 
-### Access the Applications
-- **React Frontend**: http://localhost:3000
-- **Streamlit Frontend**: http://localhost:8501  
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+The application supports **intelligent multi-source data** with secure fallback:
 
-## How to Run:
+1. **🌩️ S3 Cache** - Fastest (cached Yahoo Finance data with auto-cleanup)
+2. **📁 AWS S3 CSV (Lambda)** - Your secured dataset via Lambda
+3. **💾 Local CSV** - AAPL backup file (default option)
+4. **🌐 Yahoo Finance** - Live data with automatic S3 caching
 
-### Running with Kubernetes (current)
+## 🎯 AWS Integration Features
 
-Follow these steps from the project root to build your images and deploy both services into your local Kubernetes cluster:
+### **Manual Data Collection:**
+- **Secured data collection** - Click button to download any ticker  
+- **Automatic overwriting** - Updates existing data seamlessly  
+- **Ticker tracking** - Maintains list of available data  
+- **Rate limiting** - Prevents abuse and spam  
+- **Input validation** - Blocks malicious requests  
 
-#### 1. Build Docker Images
-Use your existing Docker Compose file to build both services
+### **Cost & Performance:**
+- **Cost-efficient** - Stays within free tier limits  
+- **S3 auto-caching** - Speeds up repeated requests  
+- **Automatic cleanup** - Prevents storage bloat  
+- **Smart fallback** - Always finds data somewhere  
+
+## 🚀 Quick Start
+
+### **Step 1: Setup AWS Credentials**
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your AWS credentials:
+# AWS_BUCKET_NAME=your-bucket-name
+# AWS_ACCESS_KEY_ID=your-access-key
+# AWS_SECRET_ACCESS_KEY=your-secret-key
+```
+
+### **Step 2: Deploy with Kubernetes (Recommended)**
+```bash
+# Make scripts executable
+chmod +x k8s_setup_script.sh k8s_cleanup_script.sh
+
+# One-command deployment
+./k8s_setup_script.sh
+```
+
+**This automatically:**
+- 🔧 Creates Kubernetes secrets from your `.env`
+- 🚀 Deploys all services
+- ✅ Tests the deployment
+- 📋 Shows you the access URLs
+
+### **Step 3: Access Applications**
+- **React Frontend**: http://localhost:30002
+- **Streamlit Frontend**: http://localhost:30001  
+- **Backend API**: http://localhost:30000
+- **API Documentation**: http://localhost:30000/docs
+
+### **Step 4: Clean Up**
+```bash
+# One-command cleanup
+./k8s_cleanup_script.sh
+```
+
+## 🐳 Alternative: Docker Compose
 
 ```bash
-docker-compose build
-```
+# Set up environment
+echo "AWS_BUCKET_NAME=your-bucket" >> .env
+echo "USE_AWS_S3=true" >> .env
 
-This will produce two local images tagged:
-
-```
-ichimoku-cloud-streamlit-backend:latest
-ichimoku-cloud-streamlit-streamlit-frontend:latest
-ichimoku-cloud-streamlit-react-frontend:latest
-```
-
-#### 2. Deploy to Kubernetes
-
-```bash
-kubectl apply -f backend/k8s/ -f streamlit-frontend/k8s/ -f react-frontend/k8s/
-```
-
-#### 4. Stop the Kubernetes Deployment
- Tear down both frontend and backend resources
-
-```bash
-kubectl delete -f backend/k8s/ -f streamlit-frontend/k8s/ -f react-frontend/k8s/
-```
-
-### Using just Docker
-
-1. Clone the repository:
-```bash
-git clone https://github.com/HeedfulMoss/Ichimoku-Cloud-streamlit.git
-cd Ichimoku-Cloud-streamlit
-```
-
-2. Start the application using Docker Compose:
-```bash
-docker-compose up
-```
-
-3. Open your browser and navigate to:
-```
-http://localhost:8501
-```
-
-This will start both the frontend and backend services with proper network configuration.
-
-### Docker Commands Reference
-
-#### Build and Start Services
-```bash
-docker-compose up
-```
-
-#### Build and Start Services in Detached Mode
-```bash
-docker-compose up -d
-```
-
-#### Stop Services
-```bash
-docker-compose down
-```
-
-#### Rebuild Services
-```bash
+# Start services
 docker-compose up --build
+
+# Access applications
+# React: http://localhost:3000
+# Streamlit: http://localhost:8501
+# Backend: http://localhost:8000
 ```
 
-#### View Logs
-```bash
-# All services
-docker-compose logs
+## 🔧 Development Commands
 
-# Specific service
-docker-compose logs react-frontend
-docker-compose logs streamlit-frontend
+### **Kubernetes Management:**
+```bash
+# Deploy everything
+./k8s_setup_script.sh
+
+# Check status
+kubectl get all
+
+# View logs
+kubectl logs -l app=ichimoku-backend --tail=20
+
+# Clean up
+./k8s_cleanup_script.sh
+```
+
+### **Docker Management:**
+```bash
+# Build and start
+docker-compose up --build
+
+# Stop services
+docker-compose down
+
+# View logs
 docker-compose logs backend
 ```
 
-### Debug Commands
-
+### **API Testing:**
 ```bash
-# Check Docker containers
-docker ps
-docker logs <container-name>
+# Test backend connectivity
+curl http://localhost:30000/data/AAPL
 
-# Check Kubernetes resources
-kubectl get all
-kubectl describe pod <pod-name>
-kubectl logs <pod-name>
+# Check AWS status
+curl http://localhost:30000/aws/status
 
-# Test API connectivity
-curl http://localhost:8000/data/AAPL
+# Test secured Lambda collection
+curl -X POST http://localhost:30000/aws/collect/MSFT
+
+# List available S3 data
+curl http://localhost:30000/aws/tickers
 ```
 
+## 🧪 Security Testing
 
-## Technical Background
+### **Rate Limiting Test:**
+```bash
+# Test rate limiting (should block after 5 requests)
+for i in {1..7}; do
+  echo "Request $i:"
+  curl -w "Status: %{http_code}\n" -X POST http://localhost:30000/aws/collect/TEST
+done
+```
 
-The Ichimoku Cloud (or Ichimoku Kinko Hyo) consists of five components:
+### **Input Validation Test:**
+```bash
+# Valid tickers (should work)
+curl -X POST http://localhost:30000/aws/collect/AAPL
+curl -X POST http://localhost:30000/aws/collect/MSFT
+
+# Invalid tickers (should fail)
+curl -X POST http://localhost:30000/aws/collect/INVALID_TICKER  # Too long
+curl -X POST http://localhost:30000/aws/collect/TEST            # Blacklisted
+curl -X POST http://localhost:30000/aws/collect/A@PL            # Special chars
+```
+
+## 📊 Technical Background
+
+The Ichimoku Cloud (Ichimoku Kinko Hyo) consists of five components:
 
 1. **Tenkan-sen (Conversion Line)**: (9-period high + 9-period low)/2
 2. **Kijun-sen (Base Line)**: (26-period high + 26-period low)/2
@@ -193,59 +256,101 @@ The Ichimoku Cloud (or Ichimoku Kinko Hyo) consists of five components:
 4. **Senkou Span B (Leading Span B)**: (52-period high + 52-period low)/2, plotted 26 periods ahead
 5. **Chikou Span (Lagging Span)**: Close price, plotted 26 periods behind
 
-The area between Senkou Span A and B is called the "cloud" or "kumo". When Span A is above Span B, the cloud is bullish (green). When Span B is above Span A, the cloud is bearish (red).
-
 The "cloud" (kumo) is the area between Senkou Spans A and B:
 - **Bullish Cloud**: When Span A > Span B → green cloud → uptrend
 - **Bearish Cloud**: When Span B > Span A → red cloud → downtrend
 
-## Continuous Integration with GitHub Actions
+## 🔐 Security Verification
 
-We use GitHub Actions to automatically build both Docker images on every push or pull request to `main`, ensuring the Dockerfiles remain valid.
+Your setup is secure when you see:
 
-### Steps
+### **Success Indicators:**
+- Rate limiting works: 6th request gets 429 error
+- Input validation works: Invalid tickers get 400 error
+- Lambda validation works: Unauthorized requests get 403 error
+- Normal usage works: Valid requests process successfully
+- Monitoring active: Security events appear in logs
 
-**Workflow**: `.github/workflows/docker-image-build.yml`
-- **Triggers**: `push` and `pull_request` events on the `main` branch
-- **Checkout your code** (`actions/checkout@v3`)
-- **Set up Buildx** (`docker/setup-buildx-action@v2`)
-- **Build backend image**
-    - Context: `./backend`
-    - Dockerfile: `backend/Dockerfile`
-    - Tag: `ichimoku-cloud-streamlit-backend:latest`
-    - `push: false` (build-only)
-- **Build streamlit-frontend image**
-    - Context: `./streamlit-frontend`
-    - Dockerfile: `streamlit-frontend/Dockerfile`
-    - Tag: `ichimoku-cloud-streamlit-streamlit-frontend:latest`
-    - `push: false`
-- **Build react-frontend image**
-    - Context: `./react-frontend`
-    - Dockerfile: `react-frontend/Dockerfile`
-    - Tag: `ichimoku-cloud-react-frontend:latest`
-    - `push: false`
-- **Validation**: Ensures Dockerfiles build successfully
+### **Security Red Flags:**
+- Backend accepts unlimited requests
+- Lambda accepts any source parameter
+- Invalid ticker formats are processed
+- Error messages expose internal details
 
-### How to enable
-- Commit and push the workflow file:
-  ```bash
-  git add .github/workflows/docker-image-build.yml
-  git commit -m "ci: Add Docker image build workflow"
-  git push origin main
-- View results on your repo's Actions tab.
+## 💰 Cost Analysis
 
-### What it tests
-- Verifies that both backend/Dockerfile and frontend/Dockerfile build successfully—catching syntax errors, missing files, or broken build steps before you merge code.
+**Expected Monthly Cost: $0.00**
 
-## Contributing
+### **AWS Free Tier Coverage:**
+- **Lambda**: 1M requests/month (you'll use 10-50)
+- **S3 Storage**: 5GB free (CSV files are tiny)
+- **S3 Requests**: 20,000 GET, 2,000 PUT free
+- **Data Transfer**: 100GB free
+
+### **Cost Controls:**
+- Lambda disabled by default
+- S3 auto-cleanup prevents bloat
+- Rate limiting prevents abuse
+- Input validation blocks spam
+
+## 🛠️ Troubleshooting
+
+### **Common Issues:**
+
+**"AWS not available":**
+```bash
+# Check credentials in .env
+cat .env | grep AWS
+
+# Test AWS CLI
+aws sts get-caller-identity
+
+# Check pod environment
+kubectl exec -it $(kubectl get pod -l app=ichimoku-backend -o jsonpath='{.items[0].metadata.name}') -- env | grep AWS
+```
+
+**"Rate limit exceeded":**
+```bash
+# Wait 1 minute between requests
+# Or check rate limiting logs
+kubectl logs -l app=ichimoku-backend | grep "Rate limit"
+```
+
+**"Invalid ticker":**
+```bash
+# Use valid format: 1-5 characters, A-Z and 0-9 only
+# Avoid: TEST, SPAM, HACK, special characters
+```
+
+## 📚 Documentation
+
+- **[Complete Setup Guide](COMPLETE_SETUP_GUIDE.md)** - Full AWS setup with security
+- **[Security Summary](security_summary.md)** - Security improvements overview
+- **[Lambda Guide](secured_lambda_guide.md)** - Secured Lambda implementation
+
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make changes and test locally
-4. Ensure Docker builds succeed
-5. Test Kubernetes deployment
+3. Test security features
+4. Ensure all scripts work
+5. Verify AWS integration
 6. Submit a pull request
 
-## License
+## 📄 License
 
-[Add your license information here]
+This project is open source. Please see the LICENSE file for details.
+
+---
+
+## 🎉 **You're Ready!**
+
+Your **security-hardened** Ichimoku Cloud application is ready for production use with:
+
+- 🔒 **Enterprise security** - Rate limiting, input validation, secure AWS integration
+- ⚡ **High performance** - Multi-source data with intelligent caching
+- 💰 **Cost optimized** - Free tier compatible with automatic controls
+- 🚀 **Easy deployment** - One-command Kubernetes setup
+- 🛡️ **Production ready** - Monitoring, logging, and error handling
+
+Start exploring technical analysis with confidence! 📈
